@@ -225,6 +225,7 @@ ul.steps li{margin:4px 0}
 .ck:has(input:checked) b{text-decoration:line-through;opacity:.6}
 b.pos{color:var(--green)} b.neg{color:var(--red)}
 #plancheck h3{margin-top:4px}
+.taxline{margin:8px 0 0;font-size:13.5px}
 @media (max-width:500px){ .inds{grid-template-columns:1fr} .mcbig b{font-size:30px} .today h2.zone{font-size:22px} }
 footer{margin-top:28px;font-size:12.5px;color:var(--muted)}
 footer a{color:var(--muted)}
@@ -464,7 +465,11 @@ const CORE = (() => {
     // Haltefrist: Bestand ist ab taxFreeFrom steuerfrei (Kauf = 1 Jahr davor); Sparplan-Käufe einzeln (FIFO)
     const tf = Date.parse(inp.taxFreeFrom);
     let tr = [{ t: (isFinite(tf) ? msToYear(tf) : env.nowYear) - 1, btc, cost: inp.btcCost || 0 }];
-    const taxAllFrom = opt.taxAllFrom || Infinity; // Stresstest: Steuerfreiheit nach 1 Jahr fällt weg
+    // Steuerfreiheit nach 1 Jahr: bleibt ('keep'), fällt weg mit Bestandsschutz für vorher gekaufte Bitcoin ('grandfather')
+    // oder fällt ganz weg ('abolish') – ab taxChangeYear; danach 26,375 % auf den Gewinn (Verkaufspreis − Einstandspreis)
+    const taxRegime = opt.taxRegime || inp.taxRegime || 'keep';
+    const taxAllFrom = opt.taxAllFrom || (taxRegime !== 'keep' ? (inp.taxChangeYear || 2027) : Infinity);
+    const grandfather = opt.taxAllFrom ? !!opt.grandfather : taxRegime === 'grandfather';
     let yearTaxAll = 0;
     const trig = (inp.sellRatio || 1) * 0.999; // Verkaufsschwelle: Kurs ≥ sellRatio × Fair Value (nur bei Regel „Signal“)
     const sellRule = inp.sellRule || 'both'; // 'both' (Fenster oder Kurs), 'window', 'signal'
@@ -482,7 +487,7 @@ const CORE = (() => {
       while (need > 1e-12 && tr.length) {
         const a = tr[0], d = Math.min(a.btc, need);
         if (t - a.t < 1) { const g = (price - a.cost) * d; yearTaxable += g; R.taxableSales.push({ y: curY, btc: d, gain: g }); }
-        else if (t >= taxAllFrom) yearTaxAll += Math.max(0, (price - a.cost) * d);
+        else if (t >= taxAllFrom && !(grandfather && a.t < taxAllFrom)) yearTaxAll += Math.max(0, (price - a.cost) * d);
         a.btc -= d; need -= d; got += d;
         if (a.btc <= 1e-12) tr.shift();
       }
@@ -861,7 +866,7 @@ const CORE = (() => {
       { name: 'Der 4-Jahres-Zyklus bleibt aus – keine Hochs zum Verkaufen', opt: { scen: base }, inp: { cycleOn: !inp.cycleOn } },
       { name: 'Anschlusszins nach der Zinsbindung 6 %', opt: { scen: base, followRateAbs: 6 } },
       { name: 'Inflation dauerhaft 4 % statt ' + fPct(inp.inflation, 1), opt: { scen: base, inflation: 4 } },
-      { name: 'Steuerfreiheit nach 1 Jahr fällt ab 2028 weg (26,4 % auf Bitcoin-Gewinne)', opt: { scen: base, taxAllFrom: 2028 } },
+      { name: `Steuerfreiheit nach 1 Jahr fällt ${inp.taxChangeYear || 2027} ganz weg (26,4 % auf Bitcoin-Gewinne, ${inp.btcCost > 0 ? 'Einstand ' + fEurS(inp.btcCost) + '/BTC' : 'ohne Einstandspreis'})`, opt: { scen: base, taxAllFrom: inp.taxChangeYear || 2027, grandfather: false } },
       { name: 'Der Euro wertet gegenüber dem Dollar um 30 % auf (Bitcoin in Euro weniger wert)', opt: { scen: base }, env: { usdPerEur: env.usdPerEur * 1.3 } },
     ];
     if (!inp.cycleOn) list[3].name = 'Der 4-Jahres-Zyklus läuft doch weiter (Hochs und Tiefs wie bisher)';
@@ -887,10 +892,10 @@ const CORE = (() => {
     };
   }
   // Ergebnis: Anteil der Zukünfte, in denen das Geld bis zum Planende reicht (und Hauskauf/Bank klappen)
-  function monteCarlo(inp, env, n = 400, seed = 7) {
+  function monteCarlo(inp, env, n = 400, seed = 7, extra = {}) {
     const rnd = rng(seed), out = { n, ok: 0, calm: 0, houseIssue: 0, failAges: [], net60: [], btcRetire: [] };
     for (let k = 0; k < n; k++) {
-      const s = simulate(inp, env, { path: mcPath(inp, env, rnd) });
+      const s = simulate(inp, env, { ...extra, path: mcPath(inp, env, rnd) });
       // „Geld reicht“ zählt nur das Ausgehen des Geldes; ein zu hoher Kredit beim Kauf wird getrennt gezählt
       if (s.failYear == null) out.ok++;
       if (s.bankFail || s.shortfallHouse > 0) out.houseIssue++;
@@ -953,7 +958,8 @@ const DEFAULTS = {
   retireYear: 2035, desired: 4500, inflation: 2.0, kv: 450, maintPct: 0.8, kidsMonthly: 0,
   topf1Target: 500000, topf1Return: 4.0, topf1Equity: 60, refillTo: 8,
   pensionOn: false, pension: 800, cashRate: 2.0,
-  partnerNet: 0, partnerUntil: 0, kvFamily: false, kidsStudy: false, kidsStudyCost: 800, flexCut: 0, btcCost: 0,
+  partnerNet: 0, partnerUntil: 0, kvFamily: false, kidsStudy: false, kidsStudyCost: 800, flexCut: 0, btcCost: 40000,
+  taxRegime: 'keep', taxChangeYear: 2027,
   lombardRate: 10, lombardLtv: 50, planBase: null, checkins: [], done: {},
 };
 let FRESH = false;
@@ -1035,6 +1041,7 @@ const GLOSS = {
   tank: 'Sicherheitstank: ETFs/Festgeld, aus denen Sie in der Rente leben. So müssen Sie Bitcoin nicht im Tief verkaufen. Er wird im Verkaufsfenster nach dem Halving (oder ab 1,2 × Trendwert) wieder aufgefüllt.',
   schwelle: 'Verkaufsschwelle: Bitcoin werden nur verkauft (Kredit tilgen, Tank füllen), wenn der Kurs mindestens so hoch ist – gemessen am Trendwert. 1,2 × ≈ ein typisches Zyklus-Hoch.',
   fenster: 'Verkaufsregel: Geplante Verkäufe (Eigenkapital, variabler Kredit, Sicherheitstank) werden auf die Monate 15–19 nach dem Halving verteilt – dort lagen die letzten Hochs (Rückblick: Ø 51 %, 78 %, 88 % des Höchstkurses). Steht Bitcoin im Fenster unter 0,75 × Trendwert, wird nicht verkauft. Zusätzlich wird jederzeit verkauft, wenn Bitcoin über 1,2 × Trendwert steigt – falls der Halving-Rhythmus einmal ausbleibt.',
+  steuer: 'Steuer auf Bitcoin: Heute sind Gewinne nach mehr als 1 Jahr Haltedauer steuerfrei (§ 23 EStG). Es gibt politische Pläne, das abzuschaffen. Dann würden ca. 26,4 % auf den Gewinn fällig (Verkaufspreis minus Einstandspreis). Ob vorher gekaufte Bitcoin steuerfrei bleiben (Bestandsschutz), ist offen. Kaufbelege daher gut aufbewahren.',
   vfe: 'Vorfälligkeitsentschädigung: Gebühr der Bank, wenn Sie einen Kredit mit fester Zinsbindung vorzeitig ganz zurückzahlen. Nach 10 Jahren fällt sie weg (§ 489 BGB).',
   split: 'Kredit aufteilen: Den Teil, den Ihr Gehalt trägt, mit festem Zins; den Rest variabel – der lässt sich im Bitcoin-Hoch jederzeit ohne Gebühr ablösen.',
   kaufkraft: 'Heutige Kaufkraft: Zukünftige Euro-Beträge werden um die Inflation bereinigt. 1 Mio. € im Jahr 2054 entsprechen bei 2 % Inflation heute nur ca. 0,57 Mio. €.',
@@ -1054,6 +1061,7 @@ const LAGE = [
   { k: 'rent', l: 'davon Warmmiete', u: '€/Monat', s: 50, h: 'fällt nach dem Hauskauf weg' },
   { k: 'housePrice', l: 'Hauspreis (heutige Preise)', u: '€', s: 10000, h: 'steigt im Modell um ' + '2 % pro Jahr' },
   { k: 'desired', l: 'Wunsch-Netto in der Rente', u: '€/Monat', s: 100, h: 'in heutiger Kaufkraft' },
+  { k: 'btcCost', l: 'Einstandspreis Ihrer Bitcoin', u: '€/BTC', s: 1000, h: 'Ø Kaufpreis je BTC inkl. Gebühren – zählt nur, falls die Steuerfreiheit wegfällt' },
 ];
 const LEVERS = [
   { k: 'purchaseYear', l: 'Hauskauf', min: 2027, max: 2040, s: 0.25, f: v => fQ(v), show: () => S.buyHouse },
@@ -1116,7 +1124,9 @@ const CARDS = [
   { id: 'd3', t: 'Rente & Sicherheitstank', sub: () => { const r = MAIN_RUN && MAIN_RUN.retire; return r ? `Tank ${fR(r.topf1, r.y)} · ${fBtc(r.btcAfter)} Bitcoin-Reserve` : ''; },
     ex: `In der Rente leben Sie aus dem <b>Sicherheitstank</b> ${help(GLOSS.tank)}. Die übrigen Bitcoin bleiben als Reserve und werden nur im Verkaufsfenster verkauft. Alle Ausgaben steigen mit der Inflation.`,
     fields: [
-      { k: 'kv', l: 'Krankenversicherung', u: '€/Monat', s: 10, h: 'freiwillig gesetzlich ca. 280–1.200 € – mit der Kasse klären' },
+      { k: 'kv', l: 'Krankenversicherung (Haushalt)', u: '€/Monat', s: 10, h: '2026 freiwillig gesetzlich mind. ca. 270 €, höchstens ca. 1.230 € (inkl. Pflege). Angerechnet werden u. a. Zinsen und ETF-Erträge, Bitcoin-Gewinne nach 1 Jahr in der Regel nicht. Kinder und Partner/in (eigenes Einkommen bis 565 €) meist beitragsfrei mitversichert – mit der Kasse klären' },
+      { k: 'taxRegime', l: 'Steuerfreiheit nach 1 Jahr Haltedauer', t: 'sel', o: [['keep', 'bleibt (heutiges Recht)'], ['grandfather', 'fällt weg – bisherige Bitcoin bleiben steuerfrei'], ['abolish', 'fällt ganz weg']] },
+      { k: 'taxChangeYear', l: 'Steueränderung ab', u: 'Jahr', s: 1, show: () => S.taxRegime && S.taxRegime !== 'keep' },
       { k: 'topf1Target', l: 'Sicherheitstank', u: '€', s: 10000 },
       { k: 'partnerNet', l: 'davon Netto Partner/in', u: '€/Monat', s: 100, h: 'Teil des Haushaltsnettos; 0 = alleinverdienend' },
       { k: 'partnerUntil', l: 'Partner/in arbeitet bis', u: 'Jahr', s: 1, show: () => S.partnerNet > 0, h: 'Arbeitet sie/er nach Ihrem Ausstieg weiter, sinkt die Entnahme' },
@@ -1140,7 +1150,6 @@ const CARDS = [
       { k: 'dca', l: 'BTC-Sparplan bis Rente', u: '€/Monat', s: 50, x: 1 },
       { k: 'cashRate', l: 'Tagesgeld-Zins', u: '% p. a.', s: 0.1, x: 1 },
       { k: 'taxFreeFrom', l: 'Bitcoin steuerfrei ab', t: 'date', x: 1 },
-      { k: 'btcCost', l: 'Durchschnittlicher Einstandspreis', u: '€/BTC', s: 1000, x: 1, h: 'für den Stresstest „Steuerfreiheit fällt weg“' },
     ], out: outRetire },
   { id: 'd4', t: 'Stresstest & Zeitachse', sub: () => { const st = STRESS || []; const bad = st.filter(t => t.status === 'red').length; return `${st.length - bad} von ${st.length} Belastungsproben bestanden`; },
     ex: 'Ein guter Plan hält auch, wenn es schlecht läuft: Bitcoin bricht zum Rentenstart ein, der Trend flacht ab, der Zyklus bleibt aus, Zinsen oder Inflation steigen.',
@@ -1167,7 +1176,7 @@ function fieldHtml(f) {
 function renderLage() {
   const age = Math.floor(ENV.nowYear) - S.birthYear;
   document.getElementById('secLage').innerHTML = `
-    <div class="sechead"><span class="num">1</span><div><h2>Ihre Lage</h2><p class="lead">Acht Angaben genügen. Alles Weitere ist sinnvoll vorbelegt und unten unter „Details“ änderbar.</p></div></div>
+    <div class="sechead"><span class="num">1</span><div><h2>Ihre Lage</h2><p class="lead">Neun Angaben genügen. Alles Weitere ist sinnvoll vorbelegt und unten unter „Details“ änderbar.</p></div></div>
     ${S.example ? `<div class="exbanner" id="exBanner"><b>Beispielwerte.</b> Tragen Sie Ihre eigenen Zahlen ein oder laden Sie einen gespeicherten Plan (unten „Plan importieren“). Ihre Angaben bleiben nur auf diesem Gerät.</div>` : ''}
     <div class="fields lage">${LAGE.map(fieldHtml).join('')}</div>
     <p class="note" id="lageNote">Heute ${age} Jahre · Überschuss ${fEur(S.netIncome - S.expenses)}/Monat · Bitcoin-Wert ${fEurS(S.btc * env().priceEur)}</p>`;
@@ -1640,6 +1649,9 @@ function scheduleMC() {
 async function runMC() {
   const key = mcKey(S), e = env(); await tick();
   MC.res = CORE.monteCarlo(S, e, MC_N); MC.key = key; MC.whatif = {};
+  // dieselben Zukünfte, falls die Steuerfreiheit nach 1 Jahr ganz wegfällt (nur nötig, solange sie im Plan noch gilt)
+  await tick();
+  MC.tax = (S.taxRegime || 'keep') !== 'abolish' ? CORE.monteCarlo(S, e, MC_N, 7, { taxAllFrom: S.taxChangeYear || 2027, grandfather: false }) : null;
   const best = FINDER.res && FINDER.res.ranked[0]; await tick();
   MC.rec = best ? CORE.monteCarlo(planInp(best), e, MC_N) : null;
   // Ausgangsquote des festgeschriebenen Plans erst nach der Rechnung für genau diesen Plan festhalten
@@ -1660,6 +1672,8 @@ function renderMC(busy) {
   el.innerHTML = `<div class="mcbox ${cls}${old ? ' old' : ''}">
     <small>Wie sicher ist der Plan? ${help(GLOSS.mc)}</small>
     <div class="mcbig"><b>${pct} %</b><span>In ${pct} von 100 möglichen Bitcoin-Zukünften reicht das Geld bis ${S.ageEnd}.${old ? ' (wird neu berechnet …)' : ''}</span></div>
+    ${MC.tax && !old ? `<p class="taxline">Fällt die Steuerfreiheit nach 1 Jahr ${S.taxChangeYear || 2027} ganz weg: <b>${Math.round(MC.tax.success * 100)} %</b> ${help(GLOSS.steuer)}${!(S.btcCost > 0) ? ' <span class="note">– ohne Einstandspreis sehr vorsichtig gerechnet</span>' : ''}</p>` : ''}
+    ${(S.taxRegime || 'keep') !== 'keep' ? `<p class="note">Gerechnet mit: Steuerfreiheit fällt ${S.taxChangeYear || 2027} weg${S.taxRegime === 'grandfather' ? ', vorher gekaufte Bitcoin bleiben steuerfrei' : ''}.</p>` : ''}
     <p class="note">${Math.round(r.calmShare * 100)} % kommen ganz ohne Notverkauf im Tief aus.${r.failAgeMedian ? ` Wenn es schiefgeht, typischerweise mit ${r.failAgeMedian}.` : ''} Vermögen mit 60 (${KK()}): Median ${fR(r.net60p50, S.birthYear + 60)}, schlechteste 10 % unter ${fR(r.net60p10, S.birthYear + 60)}.</p>
     ${r.houseShare > 0.1 && S.buyHouse ? `<div class="warn">In ${Math.round(r.houseShare * 100)} % der Zukünfte steht Bitcoin beim Kauf so niedrig, dass der Kredit für die Bank zu hoch würde. Dann: mehr Bitcoin einsetzen, günstiger oder später kaufen.</div>` : ''}
     <div class="whatif"><span class="note">Was wäre wenn …</span>${WHATIF().map(w => `<button data-whatif="${w.id}">${w.l}${MC.whatif[w.id] != null ? ` → <b>${MC.whatif[w.id]} %</b>` : ''}</button>`).join('')}</div>
