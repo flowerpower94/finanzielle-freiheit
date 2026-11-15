@@ -1552,7 +1552,7 @@ function renderToday() {
         <div><small>Einstandswert aller Anleger (MVRV)</small><b>${ind.mvrv ? nf(ind.mvrv) : '–'}</b>${bar(sig.parts.mvrv)}<em>Tiefs 0,76 · letztes Hoch 2,7</em></div>
         <div><small>Schwung (Kurs ÷ 200-Tage-Schnitt)</small><b>${ind.mayer ? nf(ind.mayer) : '–'}</b>${bar(sig.parts.mayer)}<em>Tiefs 0,7 · letztes Hoch 1,5</em></div>
       </div>
-      <p class="note">Jeder Wert ist auf „letztes Zyklus-Tief = 0, letztes Hoch = 100“ skaliert (logarithmisch), das Signal ist ihr Mittel. Ab 75 Verkaufszone, bis 15 Tiefzone. Zurückgerechnet: Hoch 2025 = 82, Hoch 2021 = 99, Tief 2022 = 2. Weil die Hochs von Zyklus zu Zyklus flacher werden, orientiert sich die Skala am letzten Hoch – kein Indikator hat jedes Hoch erwischt. Daten: CoinGecko, Coin Metrics (${ENV.indAt ? 'Stand ' + fTime(ENV.indAt) : 'hinterlegt 14.11.2026'}).</p>
+      <p class="note">Jeder Wert ist auf „letztes Zyklus-Tief = 0, letztes Hoch = 100“ skaliert (logarithmisch), das Signal ist ihr Mittel. Ab 75 Verkaufszone, bis 15 Tiefzone. <b>Ehrlich zurückgerechnet</b> (Skala nur aus früheren Zyklen) hätte das Signal die Hochs 2021 (62) und 2025 (51) nicht angezeigt – die bekannte 30-Punkte-Liste von CoinGlass ebenso wenig (1/8 bzw. 0/8 nachrechenbare Treffer). Am robustesten war, geplante Verkäufe über 15–19 Monate nach dem Halving zu verteilen (Ø 78 % bzw. 88 % des Hochs). Das Signal ist deshalb ein Lagebild, kein Auslöser. Daten: CoinGecko, Coin Metrics (${ENV.indAt ? 'Stand ' + fTime(ENV.indAt) : 'hinterlegt 14.11.2026'}).</p>
     </details>`;
 }
 
