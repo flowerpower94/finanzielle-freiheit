@@ -1,0 +1,1502 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#f5f4ef" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#131417" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Freiheit">
+<meta name="format-detection" content="telephone=no">
+<meta name="description" content="Bitcoin, Eigenheim und Rente: findet Kaufzeitpunkt, Bitcoin-Einsatz und frühesten sicheren Ausstieg nach Power Law und 4-Jahres-Zyklus – mit Live-Kursen.">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<title>Finanzielle Freiheit Rechner</title>
+<script>
+// Gewähltes Farbschema sofort setzen (verhindert kurzes Aufblitzen im falschen Modus)
+try { const t = (JSON.parse(localStorage.getItem('ff-rechner-v6')) || {}).theme; if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch (e) {}
+</script>
+<style>
+:root{
+  --bg:#f5f4ef; --card:#ffffff; --ink:#1c1e22; --muted:#61656c; --line:#e3e1da; --soft:#f0eee8;
+  --accent:#e2801a; --accent-soft:#fcefdf;
+  --green:#1e8a4b; --yellow:#b98c00; --red:#c3372c;
+  --green-bg:#e3f3e9; --yellow-bg:#faf1d2; --red-bg:#fae3e0;
+  --c-btc:#e2801a; --c-tank:#2f6bd8; --c-house:#3a9a68; --c-cash:#8a63c9; --c-debt:#c3372c; --c-band:#9ba0a8;
+  --shadow:0 1px 2px rgba(0,0,0,.05),0 6px 20px rgba(0,0,0,.04);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#131417; --card:#1c1e22; --ink:#ececea; --muted:#a2a5ab; --line:#2f3238; --soft:#24262b;
+    --accent:#f0952f; --accent-soft:#3a2a17;
+    --green:#4cc27e; --yellow:#e2b93b; --red:#f06a5e;
+    --green-bg:#16301f; --yellow-bg:#352c10; --red-bg:#3a1a17;
+    --c-btc:#f0952f; --c-tank:#5b8fef; --c-house:#4fb683; --c-cash:#a585e0; --c-debt:#f06a5e; --c-band:#6f747c;
+    --shadow:none;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#131417; --card:#1c1e22; --ink:#ececea; --muted:#a2a5ab; --line:#2f3238; --soft:#24262b;
+  --accent:#f0952f; --accent-soft:#3a2a17;
+  --green:#4cc27e; --yellow:#e2b93b; --red:#f06a5e;
+  --green-bg:#16301f; --yellow-bg:#352c10; --red-bg:#3a1a17;
+  --c-btc:#f0952f; --c-tank:#5b8fef; --c-house:#4fb683; --c-cash:#a585e0; --c-debt:#f06a5e; --c-band:#6f747c;
+  --shadow:none;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1040px;margin:0 auto;padding:20px 16px 60px}
+header.top{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;margin-bottom:16px}
+header.top h1{font-size:22px;margin:0;letter-spacing:-.01em}
+header.top h1 span{color:var(--accent)}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{font-size:12px;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:4px 10px;color:var(--muted);white-space:nowrap}
+.chip b{color:var(--ink);font-weight:600}
+button{font:inherit;cursor:pointer;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:8px;padding:6px 12px}
+button:hover{border-color:var(--accent)}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:18px}
+.hero{display:grid;gap:16px}
+.verdict{display:flex;align-items:center;gap:16px;padding:16px;border-radius:12px}
+.verdict.green{background:var(--green-bg)} .verdict.yellow{background:var(--yellow-bg)} .verdict.red{background:var(--red-bg)}
+.lamp{flex:0 0 auto;width:54px;height:54px;border-radius:50%;box-shadow:inset 0 0 0 4px rgba(255,255,255,.35)}
+.lamp.green{background:var(--green)} .lamp.yellow{background:var(--yellow)} .lamp.red{background:var(--red)}
+.verdict h2{margin:0;font-size:21px;line-height:1.25}
+.verdict p{margin:4px 0 0;color:var(--ink);opacity:.85;font-size:14px}
+.scen{display:flex;gap:6px;flex-wrap:wrap}
+.scen button{flex:1 1 0;min-width:120px;padding:10px 8px;display:flex;flex-direction:column;align-items:center;gap:2px}
+.scen button small{color:var(--muted);font-size:11.5px}
+.scen button.on{border-color:var(--accent);background:var(--accent-soft);box-shadow:inset 0 0 0 1px var(--accent)}
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;vertical-align:0}
+.dot.green{background:var(--green)} .dot.yellow{background:var(--yellow)} .dot.red{background:var(--red)}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.kpi{background:var(--soft);border-radius:10px;padding:10px 12px}
+.kpi small{display:block;color:var(--muted);font-size:12px}
+.kpi b{display:block;font-size:20px;letter-spacing:-.01em;margin-top:2px}
+.kpi em{font-style:normal;color:var(--muted);font-size:12px}
+.sliders{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px 18px}
+.sl label{display:flex;justify-content:space-between;gap:8px;font-size:13px;color:var(--muted)}
+.sl label b{color:var(--ink);font-size:14px}
+input[type=range]{width:100%;accent-color:var(--accent)}
+.toolbar{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end}
+.toolbar button{font-size:13px;padding:5px 10px}
+details.step{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);margin-top:12px;overflow:hidden}
+details.step>summary{list-style:none;cursor:pointer;padding:14px 18px;display:flex;align-items:center;gap:12px}
+details.step>summary::-webkit-details-marker{display:none}
+.num{flex:0 0 auto;width:28px;height:28px;border-radius:50%;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center;font-weight:700;font-size:14px}
+summary .t{flex:1;min-width:0}
+summary .t b{display:block;font-size:16px}
+summary .t small{display:block;color:var(--muted);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+summary .chev{color:var(--muted);transition:transform .15s}
+details[open]>summary .chev{transform:rotate(90deg)}
+.body{padding:0 18px 18px;border-top:1px solid var(--line)}
+.explain{background:var(--soft);border-radius:10px;padding:10px 12px;margin:14px 0;font-size:13.5px;color:var(--ink)}
+.explain b{color:var(--accent)}
+.fields{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px 16px;margin:14px 0}
+.f{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted)}
+.f .inp{display:flex;align-items:center;border:1px solid var(--line);border-radius:8px;background:var(--bg);overflow:hidden}
+.f .inp:focus-within{border-color:var(--accent)}
+.f input[type=number],.f input[type=date],.f select{font:inherit;color:var(--ink);background:transparent;border:0;padding:7px 9px;width:100%;min-width:0;outline:none}
+.f select{border:1px solid var(--line);border-radius:8px;background:var(--bg)}
+.f .inp em{font-style:normal;padding:0 9px;color:var(--muted);font-size:12.5px;white-space:nowrap}
+.f small{font-size:11.5px;line-height:1.35}
+.f.chk{flex-direction:row;align-items:center;gap:8px;color:var(--ink);padding-top:18px}
+.f.chk input{width:18px;height:18px;accent-color:var(--accent)}
+h3{font-size:15px;margin:18px 0 8px}
+.tbl{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--line);border-radius:10px}
+table{border-collapse:collapse;width:100%;font-size:13px;font-variant-numeric:tabular-nums}
+th,td{padding:7px 10px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+th{background:var(--soft);font-weight:600;color:var(--muted);font-size:12px}
+tr:last-child td{border-bottom:0}
+tr.hl td{background:var(--accent-soft)}
+td.l{text-align:left;white-space:normal}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin:12px 0}
+.tile{background:var(--soft);border-radius:10px;padding:10px 12px}
+.tile small{display:block;color:var(--muted);font-size:12px}
+.tile b{display:block;font-size:17px;margin-top:2px}
+.tile em{font-style:normal;color:var(--muted);font-size:12px}
+.note{font-size:12.5px;color:var(--muted)}
+.warn{background:var(--yellow-bg);border-radius:10px;padding:9px 12px;font-size:13.5px;margin:8px 0}
+.bad{background:var(--red-bg);border-radius:10px;padding:9px 12px;font-size:13.5px;margin:8px 0}
+.good{background:var(--green-bg);border-radius:10px;padding:9px 12px;font-size:13.5px;margin:8px 0}
+.chart{width:100%;height:auto;display:block;margin:8px 0}
+.chart text{fill:var(--muted);font-size:11px;font-family:inherit}
+.legend{display:flex;flex-wrap:wrap;gap:12px;font-size:12.5px;color:var(--muted)}
+.legend i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+.tr-row{display:grid;grid-template-columns:1.2fr 1fr 1fr auto;gap:8px;align-items:end;margin-bottom:6px}
+.tr-row .f{gap:2px}
+.stress{display:grid;gap:8px}
+.stress div{display:flex;gap:10px;align-items:flex-start;background:var(--soft);border-radius:10px;padding:9px 12px;font-size:13.5px}
+.stress .dot{margin-top:6px;flex:0 0 auto}
+ul.check{margin:6px 0;padding-left:20px;font-size:13.5px}
+.finder{margin-top:12px}
+.finder h2{margin:0 0 4px;font-size:19px}
+.finder .lead{margin:0 0 10px;color:var(--muted);font-size:13.5px}
+.finder .ctrl{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:flex-end;margin:10px 0}
+.finder .ctrl .f{min-width:150px;flex:1 1 150px}
+.finder .ctrl button{padding:9px 16px}
+.reco{border:2px solid var(--accent);border-radius:12px;padding:14px;margin:12px 0;background:var(--accent-soft)}
+.reco .big{font-size:18px;font-weight:700;line-height:1.35;margin:2px 0 8px}
+.reco ol{margin:8px 0 4px;padding-left:20px;font-size:13.5px}
+.reco ol li{margin:3px 0}
+.wchips{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}
+.wchips>span{font-size:12px;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:3px 9px}
+.bar{display:inline-block;height:8px;border-radius:4px;background:var(--accent);vertical-align:middle;margin-left:6px;opacity:.75}
+.stale{background:var(--yellow-bg);border-radius:8px;padding:6px 10px;font-size:13px;margin:8px 0}
+/* Geführter Ablauf */
+.sec{margin-top:12px}
+.hero{grid-template-columns:minmax(0,1fr)}
+.hero>*,.finder>*{min-width:0}
+.sechead{display:flex;gap:12px;align-items:flex-start;margin-bottom:6px}
+.sechead .num{flex:0 0 auto;width:32px;height:32px;font-size:16px;background:var(--accent);color:#fff}
+.sechead h2{margin:2px 0 2px;font-size:19px}
+.lead{margin:0;color:var(--muted);font-size:13.5px}
+.fields.lage{grid-template-columns:repeat(auto-fill,minmax(180px,1fr))}
+.seglabel{font-size:12.5px;color:var(--muted);margin-bottom:-8px}
+.flags{display:flex;flex-wrap:wrap;gap:6px}
+.fl{font-size:12.5px;border-radius:999px;padding:4px 10px;border:1px solid var(--line)}
+.fl.s1{background:var(--soft)} .fl.s2{background:var(--yellow-bg);border-color:var(--yellow)} .fl.s3{background:var(--red-bg);border-color:var(--red)}
+.chip.tgl{cursor:pointer;font:inherit;font-size:12px;padding:4px 10px;min-height:0}
+.chip.tgl:hover{border-color:var(--accent)}
+.titlerow{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.themebtn{display:inline-flex;align-items:center;gap:4px;flex:0 0 auto;font-size:13px;padding:6px 12px}
+.dethead{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;margin:26px 2px 0}
+.dethead h2{margin:0;font-size:18px}
+.switch{display:flex;align-items:center;gap:8px;font-size:13.5px;color:var(--muted);cursor:pointer}
+.switch input{width:20px;height:20px;accent-color:var(--accent)}
+details.more{margin:12px 0}
+details.more>summary{cursor:pointer;color:var(--accent);font-weight:600;font-size:14px;padding:6px 0}
+.prog{height:8px;background:var(--soft);border-radius:4px;overflow:hidden;margin:10px 0 2px}
+.prog i{display:block;height:100%;background:var(--accent);transition:width .2s}
+button.big{width:100%;padding:12px;font-size:16px;margin-top:6px}
+.q{display:inline-grid;place-items:center;width:20px;height:20px;min-height:0;padding:0;border-radius:50%;font-size:12px;font-weight:700;color:var(--accent);background:var(--accent-soft);border:0;vertical-align:1px;margin-left:2px}
+#tip{position:absolute;z-index:30;background:var(--ink);color:var(--bg);font-size:13.5px;line-height:1.45;padding:10px 12px;border-radius:10px;box-shadow:0 6px 24px rgba(0,0,0,.25)}
+#compare h3{margin-top:4px}
+.cmp td:nth-child(2),.cmp td:nth-child(3){text-align:left}
+.cmp table{table-layout:fixed}
+.cmp th,.cmp td{white-space:normal;word-break:normal;overflow-wrap:anywhere}
+.cmp th:first-child,.cmp td:first-child{width:40%;position:static!important;box-shadow:none!important;color:var(--muted)}
+.cmp th:nth-child(3),.cmp td:nth-child(3){background:var(--accent-soft)}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px}
+.toolbar.bottom{margin-top:18px;justify-content:flex-start}
+button.danger{background:var(--red-bg);border-color:var(--red);color:var(--ink)}
+.exbanner{background:var(--accent-soft);border:1px solid var(--accent);border-radius:10px;padding:10px 12px;font-size:13.5px;margin:4px 0 2px}
+footer{margin-top:28px;font-size:12.5px;color:var(--muted)}
+footer a{color:var(--muted)}
+a{color:var(--accent)}
+/* Kompakte Statusleiste beim Scrollen */
+#mini{position:fixed;left:0;right:0;top:0;z-index:20;display:flex;align-items:center;gap:10px;
+  padding:calc(env(safe-area-inset-top) + 8px) calc(16px + env(safe-area-inset-right)) 8px calc(16px + env(safe-area-inset-left));
+  background:color-mix(in srgb,var(--bg) 88%,transparent);-webkit-backdrop-filter:saturate(1.6) blur(14px);backdrop-filter:saturate(1.6) blur(14px);
+  border-bottom:1px solid var(--line);font-size:14px;transform:translateY(-110%);transition:transform .2s ease}
+#mini.show{transform:none}
+#mini b{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#mini button{padding:6px 10px;font-size:13px;min-height:34px}
+.scen .short{display:none}
+html{-webkit-text-size-adjust:100%}
+button,summary,input,select{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+.wrap{padding-left:calc(16px + env(safe-area-inset-left));padding-right:calc(16px + env(safe-area-inset-right));padding-top:calc(20px + env(safe-area-inset-top));padding-bottom:calc(60px + env(safe-area-inset-bottom))}
+
+@media (max-width:720px){
+  .kpis{grid-template-columns:repeat(2,1fr)}
+  .verdict h2{font-size:18px}
+  .lamp{width:42px;height:42px}
+}
+
+/* iPhone (z. B. 17 Pro: 402 × 874 pt) */
+@media (max-width:500px){
+  body{font-size:16px}
+  .wrap{padding-top:calc(12px + env(safe-area-inset-top))}
+  header.top{gap:8px;margin-bottom:12px}
+  header.top h1{font-size:24px}
+  .titlerow{width:100%}
+  .themebtn{width:44px;height:44px;padding:0;justify-content:center}
+  .themebtn b{display:none}
+  .themebtn span{font-size:18px}
+  .chips{flex-wrap:nowrap;overflow-x:auto;width:100%;scrollbar-width:none;margin:0 -16px;padding:0 16px}
+  .chips::-webkit-scrollbar{display:none}
+  .card{padding:14px;border-radius:16px}
+  .hero{gap:14px}
+  .verdict{padding:14px;gap:12px;align-items:flex-start}
+  .verdict h2{font-size:19px}
+  .verdict p{font-size:14.5px}
+  .lamp{width:36px;height:36px;margin-top:3px}
+  /* Szenario: ein Segment-Schalter in einer Zeile */
+  .scen{flex-wrap:nowrap;gap:4px;background:var(--soft);padding:4px;border-radius:12px}
+  .scen button{min-width:0;flex:1;padding:8px 4px;min-height:52px;border:0;background:transparent;border-radius:9px;font-size:14px}
+  .scen button.on{background:var(--card);box-shadow:0 1px 3px rgba(0,0,0,.12);border:0}
+  .scen .long{display:none}.scen .short{display:block}
+  .kpi{padding:10px}
+  .kpi b{font-size:18px}
+  .sliders{grid-template-columns:1fr;gap:14px}
+  .sl label{font-size:14px}.sl label b{font-size:15px}
+  input[type=range]{height:32px;-webkit-appearance:none;appearance:none;background:transparent}
+  input[type=range]::-webkit-slider-runnable-track{height:6px;border-radius:3px;background:var(--line)}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:28px;height:28px;margin-top:-11px;border-radius:50%;background:#fff;border:1px solid rgba(0,0,0,.08);box-shadow:0 2px 6px rgba(0,0,0,.25)}
+  input[type=range]::-moz-range-track{height:6px;border-radius:3px;background:var(--line)}
+  input[type=range]::-moz-range-thumb{width:28px;height:28px;border-radius:50%;background:#fff;border:0;box-shadow:0 2px 6px rgba(0,0,0,.25)}
+  .toolbar{justify-content:stretch}
+  .toolbar button{flex:1;min-height:44px;font-size:14px}
+  button{min-height:44px}
+  /* Eingaben: 16 px verhindert das automatische Hineinzoomen von Safari */
+  .fields{grid-template-columns:1fr;gap:12px}
+  .f{font-size:14px}
+  .f input[type=number],.f input[type=date],.f select{font-size:16px;min-height:44px;padding:8px 10px}
+  .f .inp em{font-size:14px}
+  .f small{font-size:12.5px}
+  .f.chk{padding-top:4px;min-height:44px}
+  .f.chk input{width:24px;height:24px}
+  details.step>summary{padding:14px;min-height:60px}
+  summary .t b{font-size:16.5px}
+  summary .t small{white-space:normal;font-size:13px}
+  .body{padding:0 14px 16px}
+  .explain{font-size:14px}
+  .tiles{grid-template-columns:1fr 1fr;gap:8px}
+  .tile{padding:9px 10px}.tile b{font-size:16px}
+  /* Tabellen: erste Spalte bleibt beim seitlichen Wischen stehen */
+  .tbl{margin:0 -14px;border-radius:0;border-left:0;border-right:0;overscroll-behavior-x:contain}
+  table{font-size:13px}
+  th,td{padding:8px}
+  th:first-child,td:first-child{position:sticky;left:0;z-index:1;background:var(--card);box-shadow:1px 0 0 var(--line)}
+  th:first-child{background:var(--soft)}
+  tr.hl td:first-child{background:var(--accent-soft)}
+  td.l{min-width:220px}
+  .finder .ctrl{flex-direction:column;align-items:stretch}
+  .finder .ctrl button{min-height:50px;font-size:16px}
+  .finder h2{font-size:20px}
+  .reco{margin:12px -4px;padding:12px}
+  .reco .big{font-size:17px}
+  .reco button{width:100%;min-height:50px;font-size:15px}
+  .stress div{font-size:14px}
+  footer{font-size:13px}
+}
+</style>
+</head>
+<body>
+<div id="mini" aria-hidden="true"><span class="dot" id="miniDot"></span><b id="miniTxt"></b><button id="miniTop" tabindex="-1">zum Plan</button></div>
+<div class="wrap">
+  <header class="top">
+    <div class="titlerow"><h1>Finanzielle Freiheit <span>Rechner</span></h1>
+      <button class="chip tgl themebtn" id="bTheme" title="Darstellung wechseln: Automatisch → Hell → Dunkel"></button></div>
+    <div class="chips" id="chips"></div>
+  </header>
+
+  <section class="card sec" id="secLage"></section>
+
+  <section class="card sec finder" id="finder"></section>
+
+  <section class="card sec hero" id="secPlan">
+    <div class="sechead"><span class="num">3</span><div><h2>Ihr Plan</h2><p class="lead">So sieht Ihr aktueller Plan aus – verschieben Sie Kauf, Bitcoin-Einsatz und Rentenstart direkt hier.</p></div></div>
+    <div id="verdict"></div>
+    <div id="flags"></div>
+    <div class="seglabel">Wie entwickelt sich Bitcoin?</div>
+    <div class="scen" id="scen"></div>
+    <div class="kpis" id="kpis"></div>
+    <div class="sliders" id="sliders"></div>
+    <div id="compare"></div>
+  </section>
+
+  <div class="dethead">
+    <h2>Details &amp; Annahmen</h2>
+    <label class="switch"><input type="checkbox" id="expertTgl"><span>Expertenmodus</span></label>
+  </div>
+  <div id="steps"></div>
+
+  <div class="toolbar bottom">
+    <button id="bExport">Plan exportieren</button>
+    <button id="bImport">Plan importieren</button>
+    <button id="bReset">Alles zurücksetzen</button>
+    <input type="file" id="fImport" accept="application/json" hidden>
+  </div>
+
+  <footer>
+    <p><b>Modellrechnung, keine Anlage- oder Steuerberatung.</b> Das Power-Law-Modell ist ein Modell, keine Prognose. Bitcoin kann jahrelang deutlich unter dem Modellwert liegen. Zinsen für 2030 und später sind unbekannt – der Rechner nutzt heutige Werte. Steuern und Krankenversicherung sind vereinfacht dargestellt; vor Entscheidungen bitte Bank, Steuerberater und Notar fragen.</p>
+    <p>Daten: BTC-Kurs von <a href="https://www.coingecko.com" target="_blank" rel="noopener">CoinGecko</a> · Bundrenditen (Zinsstruktur, Tageswerte) von der <a href="https://www.bundesbank.de/de/statistiken/geld-und-kapitalmaerkte/zinssaetze-und-renditen" target="_blank" rel="noopener">Deutschen Bundesbank</a> · Bauzins-Vergleich (Stand 11/2026): <a href="https://www.interhyp.de/zinsen/" target="_blank" rel="noopener">Interhyp</a>, <a href="https://www.drklein.de/aktuelle-bauzinsen.html" target="_blank" rel="noopener">Dr. Klein</a>, <a href="https://www.wuestenrot.de/baufinanzierung/zinsentwicklung" target="_blank" rel="noopener">Wüstenrot</a> · Grunderwerbsteuer BaWü 5,0 % · Power Law nach G. Santostasi.</p>
+  </footer>
+</div>
+
+<script>
+// Bitcoin-Wochenkurse in USD (Jahr als Dezimalzahl, Kurs), Quelle: Blockchain.com Market Price, Stand 14.11.2026
+const HIST = [[2010.628,0.07],[2010.647,0.07],[2010.666,0.06],[2010.685,0.06],[2010.704,0.09],[2010.724,0.06],[2010.743,0.06],[2010.762,0.06],[2010.781,0.1],[2010.8,0.1],[2010.819,0.19],[2010.839,0.21],[2010.858,0.32],[2010.877,0.28],[2010.896,0.29],[2010.915,0.26],[2010.934,0.23],[2010.954,0.23],[2010.973,0.27],[2010.992,0.29],[2011.011,0.3],[2011.03,0.33],[2011.049,0.38],[2011.069,0.43],[2011.088,0.92],[2011.107,0.91],[2011.126,1.08],[2011.145,0.89],[2011.164,0.97],[2011.184,0.9],[2011.203,0.9],[2011.222,0.81],[2011.241,0.8],[2011.26,0.72],[2011.279,0.92],[2011.299,1.19],[2011.318,1.78],[2011.337,3.51],[2011.356,5.41],[2011.375,8.27],[2011.394,7.27],[2011.414,9.47],[2011.433,22.1],[2011.452,20.8],[2011.471,15.4],[2011.49,17.5],[2011.509,15.4],[2011.529,14.5],[2011.548,14.5],[2011.567,14.3],[2011.586,13.4],[2011.605,11.8],[2011.624,11.4],[2011.644,11.5],[2011.663,9.11],[2011.682,7.64],[2011.701,6.19],[2011.72,6.67],[2011.739,5.1],[2011.759,5.03],[2011.778,4.16],[2011.797,2.84],[2011.816,3],[2011.835,3.37],[2011.854,3.19],[2011.874,2.67],[2011.893,2.36],[2011.912,2.98],[2011.931,3.06],[2011.95,3.29],[2011.969,4.41],[2011.989,4.09],[2012.008,5.37],[2012.027,6.95],[2012.046,6.97],[2012.065,6.5],[2012.084,5.65],[2012.104,5.74],[2012.123,5.43],[2012.142,4.46],[2012.161,4.98],[2012.18,5.05],[2012.199,5.42],[2012.219,4.95],[2012.238,4.77],[2012.257,5],[2012.276,4.9],[2012.295,5.06],[2012.314,5.19],[2012.334,5.04],[2012.353,5.1],[2012.372,5.09],[2012.391,5.13],[2012.41,5.16],[2012.429,5.49],[2012.449,5.76],[2012.468,6.56],[2012.487,6.48],[2012.506,6.71],[2012.525,7.24],[2012.544,9.47],[2012.564,8.91],[2012.583,9.46],[2012.602,11.1],[2012.621,12.3],[2012.64,10.3],[2012.659,11.3],[2012.678,10.6],[2012.698,11.2],[2012.717,12.2],[2012.736,12.2],[2012.755,12.9],[2012.774,12.3],[2012.793,12],[2012.813,12],[2012.832,10.9],[2012.851,11],[2012.87,11.1],[2012.889,11.8],[2012.908,12.5],[2012.928,13.1],[2012.947,13.6],[2012.966,13.4],[2012.985,13.4],[2013.004,13.5],[2013.023,13.8],[2013.043,14.5],[2013.062,17.6],[2013.081,19.8],[2013.1,20.9],[2013.119,25.1],[2013.138,29.5],[2013.158,31.2],[2013.177,40.6],[2013.196,44.3],[2013.215,59.5],[2013.234,78.8],[2013.253,117],[2013.273,231],[2013.292,68],[2013.311,143],[2013.33,139],[2013.349,112],[2013.368,112],[2013.388,123],[2013.407,129],[2013.426,121],[2013.445,109],[2013.464,107],[2013.483,104],[2013.503,91],[2013.522,76.7],[2013.541,97],[2013.56,95.6],[2013.579,108],[2013.598,107],[2013.618,109],[2013.637,105],[2013.656,118],[2013.675,129],[2013.694,122],[2013.713,139],[2013.733,124],[2013.752,128],[2013.771,124],[2013.79,141],[2013.809,190],[2013.828,216],[2013.848,253],[2013.867,355],[2013.886,547],[2013.905,918],[2013.924,1050],[2013.943,979],[2013.963,674],[2013.982,653],[2014.001,732],[2014.02,790],[2014.039,816],[2014.058,825],[2014.078,786],[2014.097,803],[2014.116,675],[2014.135,630],[2014.154,560],[2014.173,673],[2014.193,632],[2014.212,615],[2014.231,586],[2014.25,479],[2014.269,453],[2014.288,523],[2014.308,489],[2014.327,448],[2014.346,428],[2014.365,439],[2014.384,488],[2014.403,573],[2014.423,670],[2014.442,649],[2014.461,608],[2014.48,575],[2014.499,639],[2014.518,625],[2014.538,624],[2014.557,620],[2014.576,586],[2014.595,582],[2014.614,569],[2014.633,490],[2014.653,514],[2014.672,474],[2014.691,473],[2014.71,463],[2014.729,440],[2014.748,390],[2014.768,334],[2014.787,403],[2014.806,386],[2014.825,356],[2014.844,330],[2014.863,369],[2014.883,375],[2014.902,376],[2014.921,380],[2014.94,352],[2014.959,330],[2014.978,337],[2014.998,311],[2015.017,287],[2015.036,222],[2015.055,211],[2015.074,264],[2015.093,228],[2015.112,220],[2015.132,245],[2015.151,240],[2015.17,279],[2015.189,290],[2015.208,284],[2015.227,245],[2015.247,244],[2015.266,254],[2015.285,216],[2015.304,236],[2015.323,225],[2015.342,236],[2015.362,241],[2015.381,231],[2015.4,236],[2015.419,225],[2015.438,229],[2015.457,250],[2015.477,244],[2015.496,262],[2015.515,266],[2015.534,288],[2015.553,277],[2015.572,294],[2015.592,285],[2015.611,271],[2015.63,222],[2015.649,222],[2015.668,228],[2015.687,244],[2015.707,230],[2015.726,230],[2015.745,237],[2015.764,247],[2015.783,250],[2015.802,271],[2015.822,295],[2015.841,405],[2015.86,336],[2015.879,336],[2015.898,320],[2015.917,363],[2015.937,414],[2015.956,464],[2015.975,435],[2015.994,433],[2016.013,432],[2016.032,437],[2016.052,377],[2016.071,392],[2016.09,373],[2016.109,373],[2016.128,407],[2016.147,419],[2016.167,434],[2016.186,412],[2016.205,416],[2016.224,416],[2016.243,416],[2016.262,422],[2016.282,426],[2016.301,436],[2016.32,468],[2016.339,451],[2016.358,451],[2016.377,453],[2016.397,444],[2016.416,532],[2016.435,578],[2016.454,685],[2016.473,664],[2016.492,645],[2016.512,668],[2016.531,665],[2016.55,675],[2016.569,651],[2016.588,531],[2016.607,585],[2016.627,575],[2016.646,582],[2016.665,576],[2016.684,608],[2016.703,609],[2016.722,606],[2016.742,604],[2016.761,607],[2016.78,638],[2016.799,636],[2016.818,651],[2016.837,727],[2016.857,708],[2016.876,712],[2016.895,749],[2016.914,730],[2016.933,759],[2016.952,778],[2016.972,802],[2016.991,930],[2017.01,1040],[2017.029,904],[2017.048,907],[2017.067,884],[2017.087,964],[2017.106,1050],[2017.125,1010],[2017.144,1130],[2017.163,1190],[2017.182,1230],[2017.202,1250],[2017.221,1110],[2017.24,1040],[2017.259,1140],[2017.278,1220],[2017.297,1200],[2017.317,1270],[2017.336,1450],[2017.355,1720],[2017.374,1710],[2017.393,2260],[2017.412,2200],[2017.432,2870],[2017.451,2710],[2017.47,2740],[2017.489,2560],[2017.508,2600],[2017.527,2310],[2017.546,2300],[2017.566,2560],[2017.585,2730],[2017.604,3410],[2017.623,4180],[2017.642,4090],[2017.661,4590],[2017.681,4390],[2017.7,4170],[2017.719,3900],[2017.738,3880],[2017.757,4310],[2017.776,4780],[2017.796,5590],[2017.815,5510],[2017.834,6420],[2017.853,7130],[2017.872,6590],[2017.891,8100],[2017.911,9920],[2017.93,11700],[2017.949,16900],[2017.968,17400],[2017.987,15700],[2018.006,14800],[2018.026,14400],[2018.045,11300],[2018.064,10800],[2018.083,10100],[2018.102,7710],[2018.121,8530],[2018.141,11200],[2018.16,10600],[2018.179,10700],[2018.198,9150],[2018.217,8910],[2018.236,7800],[2018.256,7430],[2018.275,6850],[2018.294,7910],[2018.313,9660],[2018.332,9070],[2018.351,9190],[2018.371,8470],[2018.39,7990],[2018.409,7460],[2018.428,7620],[2018.447,6550],[2018.466,6740],[2018.486,6100],[2018.505,6520],[2018.524,6330],[2018.543,7320],[2018.562,8420],[2018.581,7740],[2018.601,6720],[2018.62,6190],[2018.639,6470],[2018.658,7080],[2018.677,7360],[2018.696,6280],[2018.716,6340],[2018.735,6430],[2018.754,6520],[2018.773,6630],[2018.792,6620],[2018.811,6480],[2018.831,6300],[2018.85,6480],[2018.869,6360],[2018.888,4490],[2018.907,3830],[2018.926,3960],[2018.946,3410],[2018.965,3710],[2018.984,3820],[2019.003,3860],[2019.022,4020],[2019.041,3600],[2019.061,3590],[2019.08,3420],[2019.099,3470],[2019.118,3630],[2019.137,3930],[2019.156,3830],[2019.176,3870],[2019.195,3890],[2019.214,4030],[2019.233,3950],[2019.252,4880],[2019.271,5180],[2019.291,5200],[2019.31,5520],[2019.329,5270],[2019.348,5760],[2019.367,7990],[2019.386,7950],[2019.406,8720],[2019.425,7680],[2019.444,7920],[2019.463,9080],[2019.482,11800],[2019.501,10800],[2019.521,12600],[2019.54,9400],[2019.559,9840],[2019.578,9590],[2019.597,11500],[2019.616,10900],[2019.636,10800],[2019.655,10200],[2019.674,10600],[2019.693,10100],[2019.712,10200],[2019.731,8550],[2019.751,8320],[2019.77,8190],[2019.789,8160],[2019.808,8030],[2019.827,9430],[2019.846,9310],[2019.866,8800],[2019.885,8120],[2019.904,7160],[2019.923,7300],[2019.942,7220],[2019.961,6610],[2019.98,7250],[2020,7170],[2020.019,8170],[2020.038,8840],[2020.057,8720],[2020.076,9390],[2020.095,9160],[2020.115,10300],[2020.134,10200],[2020.153,9310],[2020.172,8750],[2020.191,7890],[2020.21,5360],[2020.23,6770],[2020.249,6430],[2020.268,7210],[2020.287,6870],[2020.306,6850],[2020.325,7770],[2020.345,9030],[2020.364,8810],[2020.383,9790],[2020.402,8840],[2020.421,9530],[2020.44,9780],[2020.46,9530],[2020.479,9620],[2020.498,9130],[2020.517,9260],[2020.536,9250],[2020.555,9390],[2020.575,10900],[2020.594,11200],[2020.613,11400],[2020.632,12000],[2020.651,11300],[2020.67,11900],[2020.69,10100],[2020.709,10800],[2020.728,10500],[2020.747,10800],[2020.766,10600],[2020.785,11400],[2020.805,11900],[2020.824,13700],[2020.843,14000],[2020.862,15300],[2020.881,17700],[2020.9,19200],[2020.92,18800],[2020.939,18300],[2020.958,19400],[2020.977,23800],[2020.996,27400],[2021.015,34000],[2021.035,34000],[2021.054,36000],[2021.073,32500],[2021.092,35500],[2021.111,46600],[2021.13,49200],[2021.15,48900],[2021.169,48400],[2021.188,54900],[2021.207,56900],[2021.226,54500],[2021.245,58700],[2021.265,58000],[2021.284,63600],[2021.303,56500],[2021.322,55100],[2021.341,53200],[2021.36,56800],[2021.38,42900],[2021.399,38400],[2021.418,36700],[2021.437,33500],[2021.456,40200],[2021.475,32400],[2021.495,35800],[2021.514,34200],[2021.533,32700],[2021.552,29800],[2021.571,39400],[2021.59,38100],[2021.61,45600],[2021.629,44600],[2021.648,47700],[2021.667,47200],[2021.686,46800],[2021.705,47100],[2021.725,40600],[2021.744,41000],[2021.763,51500],[2021.782,56200],[2021.801,64300],[2021.82,60300],[2021.84,63200],[2021.859,67000],[2021.878,60200],[2021.897,57600],[2021.916,57000],[2021.935,50600],[2021.955,48400],[2021.974,48900],[2021.993,47600],[2022.012,45900],[2022.031,42700],[2022.05,42400],[2022.07,36900],[2022.089,38700],[2022.108,44100],[2022.127,44500],[2022.146,38300],[2022.165,44400],[2022.185,38800],[2022.204,39300],[2022.223,42400],[2022.242,47400],[2022.261,45500],[2022.28,40100],[2022.299,41500],[2022.319,38100],[2022.338,37700],[2022.357,31000],[2022.376,30400],[2022.395,29600],[2022.414,31800],[2022.434,31100],[2022.453,22200],[2022.472,20700],[2022.491,20300],[2022.51,20200],[2022.529,19300],[2022.549,23400],[2022.568,21300],[2022.587,23000],[2022.606,23200],[2022.625,23900],[2022.644,21500],[2022.664,19800],[2022.683,18800],[2022.702,20200],[2022.721,18900],[2022.74,19100],[2022.759,20300],[2022.779,19000],[2022.798,19300],[2022.817,20100],[2022.836,20500],[2022.855,18500],[2022.874,16900],[2022.894,16200],[2022.913,16400],[2022.932,17100],[2022.951,17800],[2022.97,16900],[2022.989,16700],[2023.009,16700],[2023.028,17400],[2023.047,21100],[2023.066,22600],[2023.085,23100],[2023.104,23300],[2023.124,22200],[2023.143,24400],[2023.162,23100],[2023.181,22200],[2023.2,24800],[2023.219,28200],[2023.239,27300],[2023.258,28200],[2023.277,30200],[2023.296,30400],[2023.315,28300],[2023.334,28700],[2023.354,27600],[2023.373,27000],[2023.392,27200],[2023.411,27700],[2023.43,27200],[2023.449,25900],[2023.469,28300],[2023.488,30700],[2023.507,30800],[2023.526,30600],[2023.545,29900],[2023.564,29200],[2023.584,29700],[2023.603,29800],[2023.622,29200],[2023.641,26000],[2023.66,27700],[2023.679,25800],[2023.699,25800],[2023.718,27200],[2023.737,26200],[2023.756,27400],[2023.775,27400],[2023.794,28400],[2023.814,33900],[2023.833,34700],[2023.852,35400],[2023.871,35500],[2023.89,35800],[2023.909,37800],[2023.929,44100],[2023.948,41500],[2023.967,42300],[2023.986,42500],[2024.005,45000],[2024.024,46100],[2024.044,43100],[2024.063,39900],[2024.082,43000],[2024.101,43100],[2024.12,49700],[2024.139,52300],[2024.159,57100],[2024.178,63800],[2024.197,71500],[2024.216,61900],[2024.235,70000],[2024.254,65400],[2024.274,69100],[2024.293,63800],[2024.312,66400],[2024.331,60600],[2024.35,62300],[2024.369,61600],[2024.389,70100],[2024.408,68300],[2024.427,70600],[2024.446,67300],[2024.465,65100],[2024.484,61800],[2024.504,62000],[2024.523,58000],[2024.542,65100],[2024.561,65900],[2024.58,66200],[2024.599,56100],[2024.619,60600],[2024.638,59000],[2024.657,59500],[2024.676,57400],[2024.695,57600],[2024.714,60300],[2024.733,64300],[2024.753,60800],[2024.772,62100],[2024.791,67000],[2024.81,67400],[2024.829,72700],[2024.848,69400],[2024.868,88000],[2024.887,92400],[2024.906,92000],[2024.925,95900],[2024.944,96700],[2024.963,106000],[2024.983,98600],[2025.002,93400],[2025.021,96900],[2025.04,96500],[2025.059,106000],[2025.078,101000],[2025.098,97900],[2025.117,95800],[2025.136,95500],[2025.155,88700],[2025.174,87200],[2025.193,82900],[2025.213,82700],[2025.232,87500],[2025.251,85200],[2025.27,76300],[2025.289,83600],[2025.308,93500],[2025.328,94300],[2025.347,96800],[2025.366,104000],[2025.385,107000],[2025.404,109000],[2025.423,105000],[2025.443,110000],[2025.462,105000],[2025.481,106000],[2025.5,106000],[2025.519,109000],[2025.538,118000],[2025.558,120000],[2025.577,118000],[2025.596,114000],[2025.615,120000],[2025.634,113000],[2025.653,112000],[2025.673,111000],[2025.692,112000],[2025.711,117000],[2025.73,112000],[2025.749,114000],[2025.768,121000],[2025.788,113000],[2025.807,108000],[2025.826,113000],[2025.845,102000],[2025.864,103000],[2025.883,93000],[2025.903,87300],[2025.922,91300],[2025.941,92700],[2025.96,87800],[2025.979,87400],[2025.998,88400],[2026.018,93700],[2026.037,95300],[2026.056,88300],[2026.075,89100],[2026.094,75600],[2026.113,68800],[2026.133,67500],[2026.152,64000],[2026.171,68300],[2026.19,69900],[2026.209,73900],[2026.228,70500],[2026.248,68200],[2026.267,71900],[2026.286,74200],[2026.305,76400],[2026.324,76300],[2026.343,80900],[2026.363,80500],[2026.382,76800],[2026.401,75800],[2026.42,66700],[2026.439,61600],[2026.458,65600],[2026.478,62700],[2026.497,58500],[2026.516,63300],[2026.535,65000],[2026.554,66500],[2026.573,63900],[2026.593,64100],[2026.612,63600],[2026.631,64700],[2026.65,78500],[2026.669,77400],[2026.688,78400],[2026.708,75600],[2026.727,86200],[2026.746,83600],[2026.765,85500],[2026.784,83100],[2026.803,82900],[2026.823,80800],[2026.842,77300],[2026.861,73700],[2026.869,68200]];
+</script>
+<script>
+// ===== CORE-START =====
+const CORE = (() => {
+  const GENESIS = Date.UTC(2009, 0, 3), DAY = 86400000;
+  const ABGELT = 0.26375; // Abgeltungsteuer + Soli
+  const PAUSCH = 2000;    // Sparerpauschbetrag Paar
+
+  function yearToMs(y) { const yi = Math.floor(y), s = Date.UTC(yi, 0, 1), e = Date.UTC(yi + 1, 0, 1); return s + (y - yi) * (e - s); }
+  function msToYear(ms) { const yi = new Date(ms).getUTCFullYear(), s = Date.UTC(yi, 0, 1), e = Date.UTC(yi + 1, 0, 1); return yi + (ms - s) / (e - s); }
+  function daysSinceGenesis(y) { return (yearToMs(y) - GENESIS) / DAY; }
+  function plUsd(y, A, n) { return A * Math.pow(daysSinceGenesis(y), n); }
+  function plGrowth(y, n) { const d = daysSinceGenesis(y); return Math.pow((d + 365.25) / d, n) - 1; }
+
+  // Formatierung
+  const nf0 = new Intl.NumberFormat('de-DE', { maximumFractionDigits: 0 });
+  const fEur = v => nf0.format(Math.round(v)) + ' €';
+  const fEurS = v => {
+    const a = Math.abs(v);
+    if (a >= 1e6) return (v / 1e6).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' Mio. €';
+    if (a >= 1e4) return nf0.format(Math.round(v / 1e3)) + ' Tsd. €';
+    return fEur(v);
+  };
+  const fBtc = v => v.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' BTC';
+  const fPct = (v, d = 2) => v.toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d }) + ' %';
+
+  function nebenkosten(price, o) {
+    const g = price * o.grest / 100, n = price * o.notar / 100, m = o.makler ? price * o.maklerPct / 100 : 0;
+    return { grest: g, notar: n, makler: m, sum: g + n + m, pct: (g + n + m) / price * 100 };
+  }
+  function ltvAdj(ltv) { if (ltv <= 0.6) return -0.10; if (ltv <= 0.8) return 0; if (ltv <= 0.9) return 0.25; if (ltv <= 1.0) return 0.45; return 0.8; }
+  // Bauzins-Schätzung in Prozent
+  function estimateRate(bund, fix, spread, ltv) { return bund[fix] + spread + ltvAdj(ltv); }
+  function loanRateFor(inp, env, fix, ltv) {
+    if (inp.rateMode === 'manual') return inp.manualRate + (env.bund[fix] - env.bund[inp.fixYears]);
+    return estimateRate(env.bund, fix, inp.spread, ltv);
+  }
+  function scenarioMult(inp, scen) { return scen === 'sup' ? inp.supMult : scen === 'res' ? inp.resMult : inp.fairMult; }
+
+  // 4-Jahres-Zyklus (Halving-Rhythmus): vom Allzeithoch cycleFall Jahre fallend ins Tief, dann steigend bis zum nächsten Hoch
+  const CYCLE_P = 4;
+  function cyclePhase(inp, y) {
+    const fall = Math.min(3.5, Math.max(0.25, inp.cycleFall || 0.75));
+    const p = ((y - inp.cyclePeak) % CYCLE_P + CYCLE_P) % CYCLE_P;
+    return p < fall ? p / fall : 1 + (p - fall) / (CYCLE_P - fall);
+  }
+  function cycleFactor(inp, y) { return inp.cycleOn ? Math.exp(inp.cycleAmp * Math.cos(Math.PI * cyclePhase(inp, y))) : 1; }
+  function cycleLabel(inp, y) {
+    if (!inp.cycleOn) return '';
+    const u = cyclePhase(inp, y);
+    if (u < 0.2 || u > 1.85) return 'Hoch'; if (u < 0.8) return 'fallend'; if (u < 1.2) return 'Tief'; return 'steigend';
+  }
+
+  // Kurspfad: Fair Value × Szenario-Faktor × Zyklus. Die heutige Abweichung davon baut sich über convYears ab.
+  function pricePath(inp, env, scen, shock) {
+    const fx = env.usdPerEur, now = env.nowYear, m = scenarioMult(inp, scen);
+    const model = y => plUsd(y, inp.plA, inp.plN) / fx * m * cycleFactor(inp, y);
+    const dev0 = Math.log(env.priceEur / model(now));
+    const hc = 1 - inp.haircut / 100;
+    return y => {
+      const fv = plUsd(y, inp.plA, inp.plN) / fx;
+      const k = inp.convYears > 0 ? Math.max(0, 1 - (y - now) / inp.convYears) : 0;
+      let p = model(y) * Math.exp(dev0 * k) * hc;
+      if (shock && y >= shock.start) { const t = y - shock.start; if (t < shock.recover) p *= Math.exp(Math.log(1 - shock.drop) * (1 - t / shock.recover)); }
+      return { price: p, fv };
+    };
+  }
+
+  function simulate(inp, env, opt = {}) {
+    const scen = opt.scen || inp.scenario;
+    const fix = opt.fix || inp.fixYears;
+    const strat = opt.strategy || inp.strategy;
+    const retireYear = opt.retireYear ?? inp.retireYear;
+    const infl = (opt.inflation ?? inp.inflation) / 100;
+    const path = pricePath(inp, env, scen, opt.shock);
+    const startY = Math.floor(env.nowYear), endY = inp.birthYear + inp.ageEnd;
+    // Kaufzeitpunkt quartalsgenau (z. B. 2029.75 = Beginn Q4 2029)
+    const pT = Math.max(env.nowYear, inp.purchaseYear), pY = Math.floor(pT + 1e-9);
+    const payoffYear = Math.max(opt.payoffYear ?? inp.payoffYear, pY + 1);
+    const tankLead = inp.tankMode === 'top' ? (inp.tankLead || 2) : 0;
+    let tankDone = false;
+
+    let btc = inp.btc, cash = inp.otherAssets, topf1 = 0, houseVal = 0;
+    let loans = []; // Teildarlehen: { name, flex, bal, orig, rate, follow, pmt, start, fixEnd, followed }
+    const debtOf = () => loans.reduce((s, l) => s + l.bal, 0);
+    // Haltefrist: Bestand ist ab taxFreeFrom steuerfrei (Kauf = 1 Jahr davor); Sparplan-Käufe einzeln (FIFO)
+    const tf = Date.parse(inp.taxFreeFrom);
+    let tr = [{ t: (isFinite(tf) ? msToYear(tf) : env.nowYear) - 1, btc, cost: 0 }];
+    const trig = (inp.sellRatio || 1) * 0.999; // Verkaufsschwelle: Kurs ≥ sellRatio × Fair Value
+
+    const R = { scen, fix, strat, rows: [], events: [], warn: [], purchase: null, payoff: null, retire: null,
+      interest: 0, vfe: 0, btcSoldLoan: 0, forced: 0, forcedBelowFv: 0, failYear: null, taxPaid: 0,
+      shortfallHouse: 0, cashNeg: false, payoffShort: 0, taxableSales: [], minTankYears: Infinity };
+    let yearTaxable = 0, curY = startY, yInt = 0, yPrin = 0;
+    const ev = (txt, type = '', t = null) => R.events.push({ y: curY, t, txt, type });
+
+    function sellBtc(eur, t, price) {
+      if (eur <= 0 || price <= 0) return 0;
+      let need = Math.min(eur / price, btc), got = 0;
+      while (need > 1e-12 && tr.length) {
+        const a = tr[0], d = Math.min(a.btc, need);
+        if (t - a.t < 1) { const g = (price - a.cost) * d; yearTaxable += g; R.taxableSales.push({ y: curY, btc: d, gain: g }); }
+        a.btc -= d; need -= d; got += d;
+        if (a.btc <= 1e-12) tr.shift();
+      }
+      btc = Math.max(0, btc - got);
+      return got * price;
+    }
+    const lname = L => loans.length > 1 ? ` (${L.name}er Teil)` : '';
+    function runLoan(L, t0, t1) {
+      if (L.bal <= 0) return 0;
+      let paid = 0;
+      const months = Math.round((t1 - t0) * 12);
+      for (let m = 0; m < months; m++) {
+        const t = t0 + m / 12;
+        if (!L.followed && t >= L.fixEnd - 1e-9) {
+          L.followed = true; L.rate = L.follow;
+          const minP = L.bal * (L.rate + 0.01) / 12; if (L.pmt < minP) L.pmt = minP;
+          ev(`Zinsbindung endet${lname(L)} – Anschlusszins ${fPct(L.rate * 100)}`, 'loan');
+        }
+        const int = L.bal * L.rate / 12, p = Math.min(L.pmt, L.bal + int);
+        L.bal += int - p; R.interest += int; yInt += int; yPrin += p - int; paid += p;
+        if (L.bal < 0.5) { L.bal = 0; ev(`Kredit${lname(L)} planmäßig abbezahlt`, 'loan'); break; }
+      }
+      return paid;
+    }
+    // Ab wann ohne Vorfälligkeitsentschädigung (VFE) ablösbar: flexibler Teil sofort, fester Teil am Bindungsende bzw. nach 10 Jahren (§ 489 BGB)
+    const freeAt = L => L.flex ? L.start : Math.min(L.fixEnd, L.start + 10);
+    // Tilgung aus BTC (voll oder Sondertilgung)
+    function payFromBtc(L, t, price, full, amount) {
+      if (L.bal <= 0) return;
+      let vfe = 0;
+      if (full) {
+        amount = L.bal;
+        // VFE ≈ Zinsschaden: Vertragszins − (heutige Bundrendite − erwarteter Zinsrückgang) − 0,3 % ersparte Kosten, über die Restbindung
+        if (t < freeAt(L) - 1e-9) vfe = L.bal * Math.max(0, L.rate - (env.bund[10] - inp.vfeDrop) / 100 - 0.003) * (freeAt(L) - t);
+      }
+      const need = amount + vfe, avail = btc * price;
+      const b0 = btc;
+      const got = sellBtc(Math.min(need, avail), t, price);
+      const vfePaid = need > 0 ? vfe * (got / need) : 0;
+      const princ = got - vfePaid;
+      L.bal = Math.max(0, L.bal - princ); R.vfe += vfePaid; R.btcSoldLoan += b0 - btc;
+      if (full) {
+        if (got < need - 1) { R.payoffShort = need - got; ev(`Volltilgung${lname(L)} nur teilweise möglich – es fehlen ${fEurS(need - got)}`, 'warn', t); }
+        else ev(`Kredit${lname(L)} mit ${fBtc(b0 - btc)} abgelöst (Kurs ${fEurS(price)})${vfePaid > 1 ? `, inkl. ca. ${fEurS(vfePaid)} Vorfälligkeitsentschädigung` : ''}`, 'loan', t);
+        if (got > 0) {
+          if (R.payoff && R.payoff.y === curY) { R.payoff.bal += princ; R.payoff.vfe += vfePaid; R.payoff.btc += b0 - btc; }
+          else if (!R.payoff) R.payoff = { y: curY, bal: princ, vfe: vfePaid, btc: b0 - btc, price };
+        }
+      } else if (princ > 1) ev(`Sondertilgung${lname(L)} ${fEurS(princ)} aus BTC (Kurs ${fEurS(price)})`, 'loan', t);
+    }
+
+    for (let y = startY; y <= endY; y++) {
+      curY = y; yearTaxable = 0; yInt = 0; yPrin = 0;
+      const t0 = y === startY ? env.nowYear : y, t1 = y + 1, frac = t1 - t0, tm = t0 + frac / 2;
+      const { price, fv } = path(tm);          // Jahresmitte: Kauf, laufende Verkäufe
+      const s0 = path(t0), p0 = s0.price;       // Jahresanfang: Ablösung, Rentenstart
+      const idx = Math.pow(1 + infl, tm - env.nowYear);
+      const retired = y >= retireYear;
+      const age = y - inp.birthYear;
+      let flow = 0, annualExp = 0;
+      // erstes Quartal des Jahres, in dem Kurs ≥ thr × Fair Value
+      const firstHit = (thr, after = -Infinity) => { for (let q = 0; q < 4; q++) { const t = t0 + q * frac / 4; if (t <= after + 1e-9) continue; const s = path(t); if (s.price >= s.fv * thr) return { t, price: s.price, fv: s.fv }; } return null; };
+
+      // 1. Hauskauf (zum Quartalsbeginn pT)
+      if (inp.buyHouse && y === pY) {
+        const { price, fv } = path(pT), tm = pT;
+        const hp = inp.priceBasis === 'heute' ? inp.housePrice * Math.pow(1 + inp.houseGrowth / 100, pT - env.nowYear) : inp.housePrice;
+        const nk = nebenkosten(hp, inp), total = hp + nk.sum + inp.renovation;
+        const cashAvail = inp.useCash ? Math.max(0, cash) : 0;
+        let loanAmt, eqBtc;
+        if (inp.finMode === 'maxSell') {
+          // höchstens btcMaxSell BTC abgeben, Rest = Kredit (passt sich dem Hauspreis an)
+          const cashUse = Math.min(cashAvail, total);
+          eqBtc = Math.min(Math.min(inp.btcMaxSell, btc) * price, total - cashUse);
+          loanAmt = Math.max(0, total - cashUse - eqBtc);
+        } else if (inp.finMode === 'keep') {
+          const sellable = Math.max(0, btc - inp.btcKeep) * price;
+          const cashUse = Math.min(cashAvail, total);
+          eqBtc = Math.min(sellable, total - cashUse);
+          loanAmt = Math.max(0, total - cashUse - eqBtc);
+        } else {
+          loanAmt = Math.min(inp.loan, total);
+          eqBtc = Math.max(0, total - loanAmt - cashAvail);
+        }
+        const cashUsed = Math.min(cashAvail, Math.max(0, total - loanAmt - eqBtc));
+        cash -= cashUsed;
+        const avail = btc * price;
+        if (eqBtc > avail + 0.5) { R.shortfallHouse = eqBtc - avail; loanAmt += eqBtc - avail; eqBtc = avail; }
+        const b0 = btc; sellBtc(eqBtc, tm, price);
+        houseVal = hp;
+        if (loanAmt > 0) {
+          const ltv = loanAmt / hp, rate = loanRateFor(inp, env, fix, ltv) / 100;
+          const follow = opt.followRateAbs != null ? opt.followRateAbs / 100 : rate + inp.followAdd / 100;
+          const fixedAmt = inp.splitOn ? Math.min(loanAmt, Math.max(0, inp.fixedPart)) : loanAmt;
+          const flexAmt = loanAmt - fixedAmt;
+          const mk = (name, amt, r, flex) => ({ name, flex, bal: amt, orig: amt, rate: r, follow: flex ? r : follow, pmt: amt * (r + inp.tilgung / 100) / 12, start: tm, fixEnd: flex ? Infinity : tm + fix, followed: false });
+          if (flexAmt > 0.5) loans.push(mk('flexibl', flexAmt, loanRateFor(inp, env, 10, ltv) / 100 + inp.flexAdd / 100, true));
+          if (fixedAmt > 0.5) loans.push(mk('fest', fixedAmt, rate, false));
+        }
+        const pmtSum = loans.reduce((s, l) => s + l.pmt, 0);
+        // Bank: Rate höchstens bankMaxPct % des Haushaltsnettos, und nur mit Erwerbseinkommen
+        const bankMax = inp.netIncome * (inp.bankMaxPct || 40) / 100;
+        if (loanAmt > 0 && (pmtSum > bankMax + 1 || pT >= retireYear)) R.bankFail = pT >= retireYear ? 'retired' : pmtSum;
+        R.purchase = { y, t: pT, price, fv, hp, nk, total, loanAmt, btcSold: b0 - btc, btcAfter: btc, cashUsed, bankMax,
+          rate: loanAmt > 0 ? loans.reduce((s, l) => s + l.rate * l.orig, 0) / loanAmt : 0, pmt: pmtSum, ltv: loanAmt / hp,
+          parts: loans.map(l => ({ name: l.name, flex: l.flex, amt: l.orig, rate: l.rate, pmt: l.pmt })) };
+        ev(`Hauskauf ${fEurS(hp)}: ${fBtc(b0 - btc)} verkauft (Kurs ${fEurS(price)}), Kredit ${fEurS(loanAmt)}`, 'house', pT);
+        if (R.shortfallHouse > 0) ev(`BTC reichen nicht – ${fEurS(R.shortfallHouse)} fehlen`, 'warn');
+      }
+
+      // 2. Tilgungsstrategie
+      // Reihenfolge: zuerst der flexible Teil (ohne VFE), dann der feste
+      if (debtOf() > 0 && y >= pY) {
+        if (strat === 'fixed') { if (y === payoffYear) for (const L of loans) payFromBtc(L, t0, p0, true); }
+        else if (strat === 'opp' || strat === 'top') {
+          // Schwelle wird vierteljährlich geprüft – verkauft wird im ersten Quartal (nach dem Kauf), in dem sie erreicht ist
+          const thr = trig; // eine gemeinsame Verkaufsschwelle für Tilgung, Tank und Auffüllen
+          const hit = firstHit(thr, pT);
+          if (hit) for (const L of loans) {
+            if (L.bal <= 0) continue;
+            const free = hit.t >= freeAt(L) - 1e-9;
+            // Zyklus-Hoch: flexiblen Teil ganz ablösen, festen per Sondertilgung (oder ganz, wenn frei bzw. gewünscht)
+            const full = free || (strat === 'top' && inp.topFixedFull);
+            if (full) payFromBtc(L, hit.t, hit.price, true);
+            else payFromBtc(L, hit.t, hit.price, false, Math.min(L.bal, L.orig * inp.sonderPct / 100));
+          }
+        }
+      }
+
+      // 3. Kreditrate
+      for (const L of loans) if (L.bal > 0) flow -= runLoan(L, y === pY ? L.start : t0, t1);
+
+      // 4a. Sicherheitstank vorab im letzten Zyklus-Hoch vor dem Rentenstart füllen (tankMode 'top')
+      if (tankLead && !tankDone && y < retireYear && y >= retireYear - tankLead) {
+        const h = firstHit(trig);
+        if (h) {
+          const b0 = btc;
+          topf1 += sellBtc(Math.min(Math.max(0, inp.topf1Target - topf1), btc * h.price), h.t, h.price);
+          tankDone = true; R.tankEarlyBtc = b0 - btc;
+          ev(`Sicherheitstank im Hoch vorab gefüllt: ${fEurS(topf1)} (${fBtc(b0 - btc)} zu ${fEurS(h.price)})`, 'retire', h.t);
+        }
+      }
+      // 4b. Rentenstart: Sicherheitstank (rest-)füllen
+      if (y === retireYear) {
+        topf1 += cash; cash = 0;
+        const b0 = btc;
+        topf1 += sellBtc(Math.min(Math.max(0, inp.topf1Target - topf1), btc * p0), t0, p0);
+        R.retire = { y, price: p0, fv: s0.fv, btcForTank: b0 - btc + (R.tankEarlyBtc || 0), btcAfter: btc, topf1, early: !!R.tankEarlyBtc };
+        ev(`Rentenstart mit ${age}: Sicherheitstank ${fEurS(topf1)}${b0 - btc > 1e-6 ? ` (${fBtc(b0 - btc)} verkauft)` : ''}`, 'retire', t0);
+      }
+
+      // 5. Einkommen / Ausgaben
+      if (!retired) {
+        // Ab dem Hauskauf entfällt die Miete (sie steckt in den laufenden Ausgaben)
+        const ownFrac = !inp.buyHouse ? 0 : y > pY ? 1 : y === pY ? Math.max(0, (t1 - pT) / frac) : 0;
+        flow += (inp.netIncome - inp.expenses + (inp.rent || 0) * ownFrac) * 12 * frac;
+        if (inp.dca > 0 && price > 0) { const amt = inp.dca * 12 * frac, b = amt / price; btc += b; tr.push({ t: tm, btc: b, cost: price }); flow -= amt; }
+      } else {
+        const kids = [inp.kid1, inp.kid2].filter(k => k > 0 && y - k < 18 && y - k >= 0).length;
+        // ohne eigenes Haus läuft die Miete in der Rente weiter (mit Inflation)
+        annualExp = (inp.desired + inp.kv + kids * inp.kidsMonthly + (houseVal > 0 ? 0 : (inp.rent || 0))) * 12 * idx + houseVal * inp.maintPct / 100;
+        const pens = inp.pensionOn && age >= 67 ? inp.pension * 12 * idx : 0;
+        flow -= (annualExp - pens) * frac;
+      }
+
+      // 6. Steuer auf BTC-Verkäufe innerhalb der Haltefrist (Freigrenze 1.000 €) – pauschal 40 % als Vorsichtswert
+      if (yearTaxable >= 1000) { const tax = yearTaxable * 0.40; flow -= tax; R.taxPaid += tax; ev(`BTC-Verkauf vor Ablauf der Haltefrist – ca. ${fEurS(tax)} Steuer`, 'warn'); }
+
+      // 7. Konten buchen
+      if (!retired) {
+        cash += flow;
+        if (cash < -1) {
+          R.cashNeg = true;
+          const got = sellBtc(Math.min(-cash, btc * price), tm, price); cash += got;
+          if (got > 0) { R.forced++; if (price < fv * 0.999) R.forcedBelowFv++; }
+          if (cash < -1 && R.failYear == null) { R.failYear = y; ev('Kein Geld mehr für Rate/Ausgaben', 'fail'); }
+        }
+        if (cash > 0) cash *= 1 + inp.cashRate / 100 * (1 - ABGELT) * frac;
+        if (topf1 > 0) { // vorab gefüllter Tank arbeitet schon
+          const g = topf1 * inp.topf1Return / 100 * frac, taxable = g * (inp.topf1Equity / 100 * 0.7 + (1 - inp.topf1Equity / 100));
+          const tax = Math.max(0, taxable - PAUSCH) * ABGELT; topf1 += g - tax; R.taxPaid += tax;
+        }
+      } else {
+        topf1 += flow;
+        if (topf1 > 0) {
+          const g = topf1 * inp.topf1Return / 100 * frac;
+          const taxable = g * (inp.topf1Equity / 100 * 0.7 + (1 - inp.topf1Equity / 100));
+          const tax = Math.max(0, taxable - PAUSCH) * ABGELT;
+          topf1 += g - tax; R.taxPaid += tax;
+        }
+        const ye = Math.max(1, annualExp);
+        // In Hochphasen (Kurs ≥ Verkaufsschwelle, vierteljährlich geprüft) Topf 1 auf refillTo Jahresausgaben auffüllen
+        const rh = topf1 < inp.refillTo * ye - 1 && btc > 1e-8 ? firstHit(trig) : null;
+        if (rh) {
+          const got = sellBtc(Math.min(inp.refillTo * ye - topf1, btc * rh.price), rh.t, rh.price);
+          if (got > 1) { topf1 += got; ev(`Sicherheitstank im Hoch aufgefüllt (+${fEurS(got)}, Kurs ${fEurS(rh.price)})`, 'refill', rh.t); }
+        }
+        if (topf1 < 0) {
+          const got = sellBtc(Math.min(-topf1 + ye, btc * price), tm, price);
+          if (got > 0) { topf1 += got; R.forced++; if (price < fv * 0.999) R.forcedBelowFv++; ev(`Notverkauf Bitcoin (${fEurS(got)}, Kurs ${fEurS(price)}) – Sicherheitstank leer`, 'warn', tm); }
+          if (topf1 < -1 && R.failYear == null) { R.failYear = y; ev(`Geld aufgebraucht (Alter ${age})`, 'fail'); }
+        }
+        if (R.failYear == null) R.minTankYears = Math.min(R.minTankYears, Math.max(0, topf1) / ye);
+      }
+      if (houseVal > 0 && y > pY) houseVal *= 1 + inp.houseGrowth / 100 * frac;
+
+      const debt = debtOf();
+      R.rows.push({ y, age, price, fv, btc, btcVal: btc * price, cash, topf1, debt, houseVal,
+        net: btc * price + cash + topf1 + houseVal - debt, liquid: btc * price + cash + topf1,
+        annualExp, int: yInt, prin: yPrin, debtParts: loans.map(l => l.bal),
+        kids: [inp.kid1, inp.kid2].filter(k => k > 0).map(k => y - k) });
+    }
+
+    // Kennzahlen
+    const rr = R.rows.find(r => r.y === retireYear);
+    if (R.retire && rr) { R.retire.net = rr.net; R.retire.annualExp = rr.annualExp; R.retire.tankYears = R.retire.topf1 / Math.max(1, rr.annualExp); R.retire.swr = rr.liquid > rr.annualExp ? rr.annualExp / rr.liquid * 100 : Infinity; }
+    // Ampel + Hinweise nach Schweregrad (sev 1 = Engpass, sev 2 = ernstes Warnsignal, sev 3 = scheitert)
+    let status = 'green'; const reasons = [], flags = [];
+    const flag = (sev, short, text) => { flags.push({ sev, short, text }); reasons.push(text); };
+    if (R.shortfallHouse > 0) flag(3, 'BTC reichen nicht fürs Haus', `Für den Hauskauf fehlen ${fEurS(R.shortfallHouse)} – die Bitcoin reichen dafür nicht.`);
+    if (R.bankFail) flag(3, 'Bank lehnt ab', R.bankFail === 'retired' ? 'Der Hauskauf läge nach dem Rentenstart – ohne Erwerbseinkommen gibt die Bank keinen Kredit.' : `Die Bank würde den Kredit so kaum geben: Rate ${fEur(R.bankFail)} ist mehr als ${inp.bankMaxPct || 40} % des Nettoeinkommens (${fEur(R.purchase.bankMax)}).`);
+    if (R.failYear != null) flag(3, `Geld leer mit ${R.failYear - inp.birthYear}`, `Das Geld reicht nur bis ${R.failYear} (Alter ${R.failYear - inp.birthYear}).`);
+    if (R.payoffShort > 0) flag(2, 'Tilgung nicht ganz möglich', 'Die geplante Ablösung des Kredits ist mit den Bitcoin nicht ganz möglich.');
+    if (R.forcedBelowFv > 0) flag(2, `Notverkäufe im Tief (${R.forcedBelowFv} J.)`, `Das Geld reicht bis ${inp.ageEnd}, aber in ${R.forcedBelowFv} Jahr${R.forcedBelowFv > 1 ? 'en' : ''} müssen Bitcoin zu schwachen Kursen verkauft werden, weil der Sicherheitstank leer ist.`);
+    if (R.cashNeg) flag(1, 'Rate höher als Überschuss', 'Vor der Rente ist die Kreditrate höher als der monatliche Überschuss – die Lücke kommt aus Erspartem oder kleinen Bitcoin-Verkäufen.');
+    const maxSev = flags.reduce((m, f) => Math.max(m, f.sev), 0);
+    status = maxSev >= 3 ? 'red' : maxSev >= 1 ? 'yellow' : 'green';
+    if (status === 'red') { for (let i = reasons.length - 1; i >= 0; i--) if (flags[i].sev < 3) reasons.splice(i, 1); }
+    if (status === 'green') reasons.push(`Das Geld reicht bis Alter ${inp.ageEnd} – Bitcoin werden nur in starken Phasen verkauft.`);
+    R.status = status; R.reasons = reasons; R.flags = flags; R.sev = maxSev;
+    return R;
+  }
+
+  function compareStrategies(inp, env) {
+    const fixes = [5, 10, 15, 20], strats = ['top', 'fixed', 'opp', 'salary'], scens = ['sup', 'fair', 'res'];
+    const evalY = inp.retireYear + 10;
+    const out = [];
+    for (const fix of fixes) for (const strategy of strats) {
+      const row = { fix, strategy, by: {} };
+      for (const scen of scens) {
+        const s = simulate(inp, env, { scen, fix, strategy });
+        const re = s.rows.find(r => r.y === evalY) || s.rows[s.rows.length - 1];
+        const rr = s.rows.find(r => r.y === inp.retireYear);
+        row.by[scen] = { status: s.status, netEval: re.net, netRetire: rr ? rr.net : 0, cost: s.interest + s.vfe, vfe: s.vfe, btcLoan: s.btcSoldLoan, forcedBelowFv: s.forcedBelowFv, debtRetire: rr ? rr.debt : 0, rate: s.purchase ? s.purchase.rate : 0 };
+      }
+      out.push(row);
+    }
+    const ok = out.filter(r => scens.every(s => r.by[s].status !== 'red'));
+    const pool = ok.length ? ok : out;
+    const robust = pool.reduce((b, r) => (!b || r.by.sup.netEval > b.by.sup.netEval + 1 || (Math.abs(r.by.sup.netEval - b.by.sup.netEval) <= 1 && r.by.fair.netEval > b.by.fair.netEval)) ? r : b, null);
+    const bestFair = out.reduce((b, r) => (!b || r.by.fair.netEval > b.by.fair.netEval) ? r : b, null);
+    return { rows: out, robust, bestFair, evalY, anyOk: ok.length > 0 };
+  }
+
+  // ---------- Strategie-Finder ----------
+  // Prüfwelten: Ein Plan gilt als robust, wenn er in keiner davon scheitert (keine rote Ampel)
+  const WORLDS = [
+    { key: 'sup', name: 'Schlecht', opt: { scen: 'sup' }, inp: { cycleOn: true } },
+    { key: 'fair', name: 'Normal', opt: { scen: 'fair' }, inp: { cycleOn: true } },
+    { key: 'flat', name: 'Normal ohne Zyklus', opt: { scen: 'fair' }, inp: { cycleOn: false } },
+  ];
+  function finderGrid(inp, env, o) {
+    const now = env.nowYear, q0 = Math.ceil(now * 4 + 0.01) / 4; // nächster Quartalsbeginn
+    const buys = []; for (let t = Math.max(q0, o.buyFrom); t <= o.buyTo + 1e-9; t += 0.25) buys.push(+t.toFixed(2));
+    const sells = o.sellOptions.filter(b => b <= inp.btc + 1e-9);
+    const tanks = ['top', 'retire'];
+    const out = []; for (const b of buys) for (const s of sells) for (const tk of tanks) out.push({ buy: b, sell: s, tank: tk });
+    return out;
+  }
+  // Für eine Kombination (Kauf, BTC-Einsatz, Tank) das früheste robuste Rentenjahr suchen
+  function evalCombo(inp, env, c, o) {
+    // Vergleich über Jahre nur fair mit Hauspreis in heutigen Euro (+ Preissteigerung)
+    const base = { ...inp, priceBasis: 'heute', buyHouse: !c.noHouse, purchaseYear: c.noHouse ? 2100 : c.buy, finMode: 'maxSell', btcMaxSell: c.sell, tankMode: c.tank };
+    const ryFrom = c.noHouse ? o.retFrom : Math.max(o.retFrom, Math.ceil(c.buy + (inp.minWorkAfterBuy ?? 1) - 1e-9));
+    const years = o.target ? [o.target] : Array.from({ length: Math.max(0, o.retTo - ryFrom + 1) }, (_, i) => ryFrom + i);
+    for (const ry of years) {
+      if (ry < ryFrom) continue;
+      const res = {}; let ok = true;
+      for (const w of WORLDS) {
+        const s = simulate({ ...base, ...w.inp, retireYear: ry, payoffYear: ry }, env, { ...w.opt, retireYear: ry, payoffYear: ry });
+        res[w.key] = s; if (s.status === 'red') { ok = false; break; }
+      }
+      if (!ok) continue;
+      const ageAt = a => w => { const r = res[w.key].rows.find(x => x.age === a) || res[w.key].rows[res[w.key].rows.length - 1]; return r.net; };
+      const worst60 = Math.min(...WORLDS.map(ageAt(60)));
+      const greens = WORLDS.filter(w => res[w.key].status === 'green').length;
+      const f = res.fair;
+      const fp = f.purchase || { loanAmt: 0, pmt: 0, price: 0, hp: 0, btcSold: 0 };
+      return { ...c, retire: ry, age: ry - inp.birthYear, greens, worst60, status: Object.fromEntries(WORLDS.map(w => [w.key, res[w.key].status])),
+        fair: { loan: fp.loanAmt, pmt: fp.pmt, price: fp.price, hp: fp.hp, btcSold: fp.btcSold, btcRetire: f.retire ? f.retire.btcAfter : 0, net60: ageAt(60)(WORLDS[1]), events: f.events } };
+    }
+    return { ...c, retire: null };
+  }
+  // Ziel „earliest“: frühester robuster Ausstieg; Ziel „target“: festes Rentenjahr, größtes Polster im schlechtesten Fall
+  function rankFinder(results, goal = 'earliest') {
+    const ok = results.filter(r => r.retire != null);
+    const tie = (a, b) => b.worst60 - a.worst60 || b.fair.btcRetire - a.fair.btcRetire;
+    ok.sort(goal === 'target' ? (a, b) => b.greens - a.greens || tie(a, b)
+      : (a, b) => a.retire - b.retire || b.greens - a.greens || tie(a, b));
+    return ok;
+  }
+
+  // Eigenen Plan mit denselben Maßstäben bewerten wie der Finder (für den Vergleich „Mein Plan ↔ Empfehlung“)
+  function evalPlan(inp, env) {
+    const res = {};
+    for (const w of WORLDS) res[w.key] = simulate({ ...inp, ...w.inp }, env, { ...w.opt });
+    const at60 = k => { const rows = res[k].rows; return (rows.find(x => x.age === 60) || rows[rows.length - 1]).net; };
+    const f = res.fair, fp = f.purchase || { loanAmt: 0, pmt: 0, price: 0, hp: 0, btcSold: 0 };
+    return { buy: inp.buyHouse ? inp.purchaseYear : null, noHouse: !inp.buyHouse, sell: fp.btcSold, tank: inp.tankMode, retire: inp.retireYear, age: inp.retireYear - inp.birthYear,
+      status: Object.fromEntries(WORLDS.map(w => [w.key, res[w.key].status])), robust: WORLDS.every(w => res[w.key].status !== 'red'),
+      greens: WORLDS.filter(w => res[w.key].status === 'green').length, worst60: Math.min(...WORLDS.map(w => at60(w.key))),
+      fair: { loan: fp.loanAmt, pmt: fp.pmt, price: fp.price, hp: fp.hp, btcRetire: f.retire ? f.retire.btcAfter : 0, events: f.events } };
+  }
+
+  function earliestRetire(inp, env, scen = 'sup') {
+    for (let ry = Math.floor(env.nowYear) + 1; ry <= inp.birthYear + 67; ry++) {
+      const po = inp.payoffYear === inp.retireYear ? ry : inp.payoffYear;
+      const s = simulate(inp, env, { scen, retireYear: ry, payoffYear: po });
+      if (s.status !== 'red') return { year: ry, age: ry - inp.birthYear, status: s.status };
+    }
+    return null;
+  }
+
+  function stressTests(inp, env) {
+    const base = inp.scenario;
+    const list = [
+      { name: `BTC −75 % genau zum Rentenstart ${inp.retireYear}, Erholung über 3 Jahre`, opt: { scen: base, shock: { start: inp.retireYear, drop: 0.75, recover: 3 } } },
+      { name: 'Bitcoin entwickelt sich schlecht (dauerhaft ' + inp.supMult.toLocaleString('de-DE') + ' × Trendwert)', opt: { scen: 'sup' } },
+      { name: 'Der Bitcoin-Trend flacht ab (eigene Auswertung der Kursdaten statt Santostasi-Formel)', opt: { scen: base }, inp: { plA: PL_FIT.A, plN: PL_FIT.n } },
+      { name: 'Der 4-Jahres-Zyklus bleibt aus – keine Hochs zum Verkaufen', opt: { scen: base }, inp: { cycleOn: !inp.cycleOn } },
+      { name: 'Anschlusszins nach der Zinsbindung 6 %', opt: { scen: base, followRateAbs: 6 } },
+      { name: 'Inflation dauerhaft 4 % statt ' + fPct(inp.inflation, 1), opt: { scen: base, inflation: 4 } },
+    ];
+    if (!inp.cycleOn) list[3].name = 'Der 4-Jahres-Zyklus läuft doch weiter (Hochs und Tiefs wie bisher)';
+    return list.map(t => { const s = simulate(t.inp ? { ...inp, ...t.inp } : inp, env, t.opt); return { name: t.name, status: s.status, reason: s.reasons[0], s }; });
+  }
+  // Eigene Regression log(Kurs) ~ log(Tage) über die Tageskurse 18.08.2010–14.11.2026 (Blockchain.com)
+  const PL_FIT = { A: 6.6021e-17, n: 5.593 };
+  const PL_SANTO = { A: 1.0117e-17, n: 5.82 };
+
+  return { yearToMs, msToYear, daysSinceGenesis, plUsd, plGrowth, nebenkosten, ltvAdj, estimateRate, loanRateFor,
+    pricePath, scenarioMult, cycleFactor, cycleLabel, PL_FIT, PL_SANTO, WORLDS, finderGrid, evalCombo, rankFinder, evalPlan, simulate, compareStrategies, earliestRetire, stressTests, fEur, fEurS, fBtc, fPct };
+})();
+// ===== CORE-END =====
+</script>
+
+<script>
+// ===================== UI =====================
+const { fEur, fEurS, fBtc, fPct } = CORE;
+const STORE = 'ff-rechner-v6';
+// Quartal als Text: 2029.75 → „Q4 2029“
+const fQ = t => { const y = Math.floor(t + 1e-9); return `Q${Math.min(4, Math.floor((t - y) * 4 + 1e-6) + 1)} ${y}`; };
+const nf = (v, d = 2) => v.toLocaleString('de-DE', { maximumFractionDigits: d });
+
+const DEFAULTS = {
+  scenario: 'fair', realView: true, expert: false, prevPlan: null, fromFinder: false, theme: 'auto',
+  example: true, // neutrale Beispielwerte, bis eigene Zahlen eingetragen oder ein Plan importiert wird
+  birthYear: 1990, kid1: 0, kid2: 0, ageEnd: 90,
+  btc: 2.0, otherAssets: 20000, netIncome: 5000, expenses: 3500, dca: 0, taxFreeFrom: '',
+  btcManual: 0, plModel: 'santo', plA: 1.0117e-17, plN: 5.82,
+  supMult: 0.5, fairMult: 0.75, resMult: 1.0, cycleOn: true, cycleAmp: 0.55, cyclePeak: 2025.77, cycleFall: 0.75, convYears: 2, haircut: 0, sellRatio: 1.2,
+  buyHouse: true, priceBasis: 'heute', housePrice: 600000, houseGrowth: 2, purchaseYear: 2030.5, rent: 1100, minWorkAfterBuy: 1,
+  grest: 5.0, notar: 2.0, makler: true, maklerPct: 3.57, renovation: 0,
+  finMode: 'maxSell', btcMaxSell: 1.0, loan: 300000, btcKeep: 1.8, useCash: true,
+  rateMode: 'auto', manualRate: 3.8, fixYears: 10, spread: 0.60, tilgung: 2.2, followAdd: 1.5, sonderPct: 5,
+  splitOn: true, fixedPart: 250000, flexAdd: 0.5, vfeDrop: 0.5,
+  strategy: 'top', topFixedFull: false, payoffYear: 2035, bankMaxPct: 40,
+  tankMode: 'top', tankLead: 2, finderGoal: 'earliest', finderTarget: 2035, finderBuyFrom: 2027, finderBuyTo: 2035,
+  retireYear: 2035, desired: 4500, inflation: 2.0, kv: 450, maintPct: 0.8, kidsMonthly: 0,
+  topf1Target: 500000, topf1Return: 4.0, topf1Equity: 60, refillTo: 8,
+  pensionOn: false, pension: 800, cashRate: 2.0,
+};
+let FRESH = false;
+let S = load();
+function load() {
+  try { const j = JSON.parse(localStorage.getItem(STORE)); if (j && typeof j === 'object') return { ...DEFAULTS, ...j }; } catch (e) {}
+  FRESH = true; return structuredClone(DEFAULTS);
+}
+function save() { try { localStorage.setItem(STORE, JSON.stringify(S)); } catch (e) {} }
+
+// ---------- Live-Daten mit Fallback ----------
+const ENV = {
+  nowYear: CORE.msToYear(Date.now()),
+  liveEur: 57931, liveUsd: 63861, priceAt: Date.UTC(2026, 10, 14), priceLive: false,
+  bund: { 5: 3.18, 10: 3.41, 15: 3.57, 20: 3.65 }, bundDate: '2026-11-13', lastTry: 0,
+};
+// zuletzt geladene Kurse merken – so zeigt die App auch offline aktuelle Werte statt eines alten Standes
+const LIVE_KEY = 'ff-live-v1';
+try { const c = JSON.parse(localStorage.getItem(LIVE_KEY)); if (c && c.eur > 0 && c.at > ENV.priceAt) Object.assign(ENV, { liveEur: c.eur, liveUsd: c.usd, priceAt: c.at, ...(c.bund ? { bund: c.bund, bundDate: c.bundDate } : {}) }); } catch (e) {}
+const fTime = ms => { const d = new Date(ms), today = new Date().toDateString() === d.toDateString(); return (today ? '' : d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' }) + ' ') + d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }); };
+const priceSrc = () => ENV.priceLive && Date.now() - ENV.priceAt < 15 * 60e3 ? 'live ' + fTime(ENV.priceAt) : 'Stand ' + fTime(ENV.priceAt) + (navigator.onLine === false ? ' · offline' : '');
+const bundSrc = () => 'Bundesbank ' + new Date(ENV.bundDate).toLocaleDateString('de-DE');
+function env() {
+  const priceEur = S.btcManual > 0 ? S.btcManual : ENV.liveEur;
+  return { nowYear: ENV.nowYear, priceEur, usdPerEur: ENV.liveUsd / ENV.liveEur, bund: ENV.bund };
+}
+const getJSON = async (url, ms = 8000) => { const c = new AbortController(), t = setTimeout(() => c.abort(), ms); try { const r = await fetch(url, { cache: 'no-store', signal: c.signal }); if (!r.ok) throw new Error(r.status); return r; } finally { clearTimeout(t); } };
+async function fetchLive() {
+  ENV.lastTry = Date.now();
+  const [btc, bb] = await Promise.allSettled([
+    getJSON('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=eur,usd').then(r => r.json()),
+    getJSON('https://api.statistiken.bundesbank.de/rest/data/BBSIS/D.I.ZAR.ZI.EUR.S1311.B.A604.R05XX+R10XX+R15XX+R20XX.R.A.A._Z._Z.A?format=csv&lastNObservations=1').then(r => r.text()),
+  ]);
+  if (btc.status === 'fulfilled' && btc.value.bitcoin && btc.value.bitcoin.eur > 0) {
+    ENV.liveEur = btc.value.bitcoin.eur; ENV.liveUsd = btc.value.bitcoin.usd; ENV.priceAt = Date.now(); ENV.priceLive = true;
+  }
+  if (bb.status === 'fulfilled') {
+    const lines = bb.value.replace(/^﻿/, '').split(/\r?\n/), head = lines[0].split(';'), data = lines.find(l => /^\d{4}-\d{2}-\d{2};/.test(l));
+    if (data) {
+      const cells = data.split(';'), b = {};
+      head.forEach((h, i) => { const m = h.match(/\.R(\d\d)XX\.R\.A\.A\._Z\._Z\.A$/); if (m && cells[i]) b[+m[1]] = parseFloat(cells[i].replace(',', '.')); });
+      if (b[5] && b[10] && b[15] && b[20]) { ENV.bund = b; ENV.bundDate = cells[0]; }
+    }
+  }
+  try { localStorage.setItem(LIVE_KEY, JSON.stringify({ eur: ENV.liveEur, usd: ENV.liveUsd, at: ENV.priceAt, bund: ENV.bund, bundDate: ENV.bundDate })); } catch (e) {}
+  recalc();
+}
+// Kurs bleibt aktuell: alle 5 Minuten und beim Zurückkehren in die App
+setInterval(() => { if (!document.hidden) fetchLive(); }, 5 * 60e3);
+document.addEventListener('visibilitychange', () => { if (!document.hidden && Date.now() - ENV.lastTry > 60e3) fetchLive(); });
+window.addEventListener('online', () => fetchLive());
+
+// ---------- Heutige Kaufkraft ----------
+const defl = t => S.realView ? Math.pow(1 + S.inflation / 100, Math.max(0, t - ENV.nowYear)) : 1;
+const fR = (v, t) => fEurS(v / defl(t));           // Vermögenswerte: wahlweise in heutiger Kaufkraft
+const fRf = (v, t) => fEur(v / defl(t));
+const KK = () => S.realView ? 'in heutiger Kaufkraft' : 'nominal';
+
+// ---------- Begriffe (ein System überall) ----------
+const SCEN = { sup: ['Schlecht', 'supMult'], fair: ['Normal', 'fairMult'], res: ['Gut', 'resMult'] };
+const scenSub = k => `${nf(S[SCEN[k][1]])} × Trendwert`;
+const W_SHORT = { sup: 'Schlecht', fair: 'Normal', flat: 'Ohne Zyklus' };
+const STRAT = { top: 'Im Bitcoin-Hoch tilgen', fixed: 'Zu festem Termin mit Bitcoin ablösen', salary: 'Nur die normale Rate zahlen' };
+const STRAT_S = { top: 'Im Hoch tilgen', fixed: 'Fester Termin', opp: 'Laufend im Hoch', salary: 'Nur Rate' };
+const TANK_S = { top: 'im Hoch davor', retire: 'zum Rentenstart' };
+const WORD = (R) => R.status === 'green' ? 'machbar' : R.status === 'red' ? 'so nicht machbar' : R.sev >= 2 ? 'knapp machbar' : 'machbar – mit Engpass vor der Rente';
+const help = t => `<button class="q" type="button" data-help="${t.replace(/"/g, '&quot;')}" aria-label="Erklärung">?</button>`;
+const GLOSS = {
+  trend: 'Trendwert: der langfristige Bitcoin-Trend laut Power-Law-Modell („Fair Value“). Bitcoin lag seit 2022 meist darunter – typisch bei 0,75 × Trendwert.',
+  zyklus: '4-Jahres-Zyklus: Bisher gab es etwa alle 4 Jahre ein Hoch (ca. 18 Monate nach dem Halving) und rund 9 Monate danach ein Tief. Nächste Hochs im Modell: ca. Q4 2029, Q4 2033, Q4 2037.',
+  tank: 'Sicherheitstank: ETFs/Festgeld, aus denen Sie in der Rente leben. So müssen Sie Bitcoin nicht im Tief verkaufen. Er wird in Bitcoin-Hochs aufgefüllt.',
+  schwelle: 'Verkaufsschwelle: Bitcoin werden nur verkauft (Kredit tilgen, Tank füllen), wenn der Kurs mindestens so hoch ist – gemessen am Trendwert. 1,2 × ≈ ein typisches Zyklus-Hoch.',
+  vfe: 'Vorfälligkeitsentschädigung: Gebühr der Bank, wenn Sie einen Kredit mit fester Zinsbindung vorzeitig ganz zurückzahlen. Nach 10 Jahren fällt sie weg (§ 489 BGB).',
+  split: 'Kredit aufteilen: Den Teil, den Ihr Gehalt trägt, mit festem Zins; den Rest variabel – der lässt sich im Bitcoin-Hoch jederzeit ohne Gebühr ablösen.',
+  kaufkraft: 'Heutige Kaufkraft: Zukünftige Euro-Beträge werden um die Inflation bereinigt. 1 Mio. € im Jahr 2054 entsprechen bei 2 % Inflation heute nur ca. 0,57 Mio. €.',
+  welten: 'Ein Plan gilt als sicher, wenn er in drei Fällen nicht scheitert: Bitcoin schwach (Schlecht), typisch (Normal) und typisch, aber ohne die bisherigen Zyklus-Hochs.',
+};
+
+// ---------- Felder ----------
+// x: nur im Expertenmodus sichtbar
+const LAGE = [
+  { k: 'birthYear', l: 'Ihr Geburtsjahr', s: 1 },
+  { k: 'btc', l: 'Bitcoin-Bestand', u: 'BTC', s: 0.01 },
+  { k: 'otherAssets', l: 'Erspartes (Tagesgeld)', u: '€', s: 1000 },
+  { k: 'netIncome', l: 'Haushaltsnetto', u: '€/Monat', s: 100 },
+  { k: 'expenses', l: 'Ausgaben inkl. Miete', u: '€/Monat', s: 100 },
+  { k: 'rent', l: 'davon Warmmiete', u: '€/Monat', s: 50, h: 'fällt nach dem Hauskauf weg' },
+  { k: 'housePrice', l: 'Hauspreis (heutige Preise)', u: '€', s: 10000, h: 'steigt im Modell um ' + '2 % pro Jahr' },
+  { k: 'desired', l: 'Wunsch-Netto in der Rente', u: '€/Monat', s: 100, h: 'in heutiger Kaufkraft' },
+];
+const LEVERS = [
+  { k: 'purchaseYear', l: 'Hauskauf', min: 2027, max: 2040, s: 0.25, f: v => fQ(v), show: () => S.buyHouse },
+  { k: 'btcMaxSell', l: 'Bitcoin-Einsatz beim Kauf', min: 0, max: 5, s: 0.05, f: v => fBtc(v), show: () => S.buyHouse && S.finMode === 'maxSell' },
+  { k: 'retireYear', l: 'Rentenstart', min: 2027, max: 2061, s: 1, f: v => `${v} (Alter ${v - S.birthYear})` },
+];
+const CARDS = [
+  { id: 'd1', t: 'Bitcoin-Modell', sub: () => { const e = env(), fv = CORE.plUsd(e.nowYear, S.plA, S.plN) / e.usdPerEur; return `Heute ${fEur(e.priceEur)} = ${nf(e.priceEur / fv)} × Trendwert ${fEur(fv)}`; },
+    ex: `Langfristig folgt Bitcoin bisher einem Trend, dem <b>Trendwert</b> ${help(GLOSS.trend)}. Die drei Fälle <b>Schlecht / Normal / Gut</b> rechnen mit 0,5 / 0,75 / 1,0 × Trendwert, dazu mit dem <b>4-Jahres-Zyklus</b> ${help(GLOSS.zyklus)}. Grundlage sind die echten Kurse seit 2010.`,
+    fields: [
+      { k: 'cycleOn', l: '4-Jahres-Zyklus einrechnen', t: 'chk' },
+      { k: 'sellRatio', l: 'Bitcoin nur verkaufen ab', u: '× Trendwert', s: 0.05, h: '1,2 × ≈ typisches Zyklus-Hoch (2024: 1,28 ×)' },
+      { k: 'btcManual', l: 'Aktueller Bitcoin-Kurs', u: '€', s: 100, h: '0 = automatisch (live, sonst Stand 14.11.2026)' },
+      { k: 'plModel', l: 'Trend-Formel', t: 'sel', x: 1, o: [['santo', 'Santostasi (n = 5,82)'], ['fit', 'Eigene Auswertung 2010–2026 (n = 5,59)'], ['custom', 'eigene Werte']] },
+      { k: 'plA', l: 'Faktor A', s: 'any', x: 1, show: () => S.plModel === 'custom' },
+      { k: 'plN', l: 'Exponent n', s: 0.01, x: 1, show: () => S.plModel === 'custom' },
+      { k: 'supMult', l: 'Schlecht: Kurs um', u: '× Trendwert', s: 0.05, x: 1 },
+      { k: 'fairMult', l: 'Normal: Kurs um', u: '× Trendwert', s: 0.05, x: 1, h: 'Median seit 2019: 0,85 · seit 2022: 0,74' },
+      { k: 'resMult', l: 'Gut: Kurs um', u: '× Trendwert', s: 0.05, x: 1 },
+      { k: 'cycleAmp', l: 'Zyklus-Ausschlag (log)', s: 0.05, x: 1, show: () => S.cycleOn, h: '0,55 ≈ Tief 0,43 × bis Hoch 1,3 ×' },
+      { k: 'cyclePeak', l: 'Letztes Allzeithoch (Jahr)', s: 0.01, x: 1, show: () => S.cycleOn, h: '2025,77 = 07.10.2025' },
+      { k: 'cycleFall', l: 'Vom Hoch bis zum Tief', u: 'Jahre', s: 0.25, x: 1, show: () => S.cycleOn },
+      { k: 'convYears', l: 'Heutige Abweichung baut sich ab in', u: 'Jahren', s: 1, x: 1 },
+      { k: 'haircut', l: 'Sicherheitsabschlag auf Modell', u: '%', s: 5, x: 1 },
+    ], out: outModel },
+  { id: 'd2', t: 'Haus & Kredit', sub: () => { const p = MAIN_RUN && MAIN_RUN.purchase; return !S.buyHouse ? 'kein Hauskauf' : p ? `${fEurS(p.total)} inkl. Nebenkosten · Kredit ${fEurS(p.loanAmt)} · Rate ${fEur(p.pmt)}` : ''; },
+    ex: `Kaufnebenkosten in Baden-Württemberg: 5,0 % Grunderwerbsteuer, ca. 2 % Notar/Grundbuch, ggf. 3,57 % Makler. Der Zins wird täglich aus der Bundesanleihe-Rendite geschätzt – für ein echtes Angebot tragen Sie ihn von Hand ein. ${help(GLOSS.split)}`,
+    fields: [
+      { k: 'buyHouse', l: 'Haus kaufen', t: 'chk' },
+      { k: 'makler', l: 'Mit Makler', t: 'chk' },
+      { k: 'splitOn', l: 'Kredit aufteilen (fest + variabel)', t: 'chk' },
+      { k: 'fixedPart', l: 'Fester Teil', u: '€', s: 5000, show: () => S.splitOn, h: 'Rest variabel, jederzeit ohne Gebühr ablösbar' },
+      { k: 'fixYears', l: 'Zinsbindung', t: 'sel', num: true, o: [[5, '5 Jahre'], [10, '10 Jahre'], [15, '15 Jahre'], [20, '20 Jahre']] },
+      { k: 'strategy', l: 'Kredit abbezahlen', t: 'sel', o: Object.entries(STRAT) },
+      { k: 'payoffYear', l: 'Ablösen im Jahr', s: 1, show: () => S.strategy === 'fixed' },
+      { k: 'rateMode', l: 'Zins', t: 'sel', o: [['auto', 'automatisch schätzen'], ['manual', 'Bankangebot eintragen']] },
+      { k: 'manualRate', l: 'Sollzins laut Angebot', u: '%', s: 0.01, show: () => S.rateMode === 'manual' },
+      { k: 'priceBasis', l: 'Hauspreis gilt für', t: 'sel', x: 1, o: [['heute', 'heute (+ Preissteigerung)'], ['kauf', 'den Kaufzeitpunkt']] },
+      { k: 'houseGrowth', l: 'Preissteigerung Immobilie', u: '% p. a.', s: 0.5, x: 1 },
+      { k: 'grest', l: 'Grunderwerbsteuer', u: '%', s: 0.1, x: 1 },
+      { k: 'notar', l: 'Notar + Grundbuch', u: '%', s: 0.1, x: 1 },
+      { k: 'maklerPct', l: 'Maklerprovision', u: '%', s: 0.01, x: 1, show: () => S.makler },
+      { k: 'renovation', l: 'Renovierung / Umzug', u: '€', s: 5000, x: 1 },
+      { k: 'finMode', l: 'Eigenkapital festlegen über', t: 'sel', x: 1, o: [['maxSell', 'Bitcoin-Einsatz (Rest Kredit)'], ['loan', 'Kreditsumme (Rest Bitcoin)'], ['keep', 'Bitcoin, die bleiben sollen']] },
+      { k: 'loan', l: 'Kreditsumme', u: '€', s: 5000, x: 1, show: () => S.finMode === 'loan' },
+      { k: 'btcKeep', l: 'Mindestens behalten', u: 'BTC', s: 0.05, x: 1, show: () => S.finMode === 'keep' },
+      { k: 'useCash', l: 'Erspartes als Eigenkapital', t: 'chk', x: 1 },
+      { k: 'spread', l: 'Bank-Aufschlag auf Bundrendite', u: '%-Pkt.', s: 0.05, x: 1, show: () => S.rateMode === 'auto' },
+      { k: 'flexAdd', l: 'Aufschlag variabler Teil', u: '%-Pkt.', s: 0.1, x: 1, show: () => S.splitOn },
+      { k: 'tilgung', l: 'Anfängliche Tilgung', u: '%', s: 0.1, x: 1 },
+      { k: 'followAdd', l: 'Anschlusszins-Puffer', u: '%-Pkt.', s: 0.25, x: 1 },
+      { k: 'topFixedFull', l: 'Im Hoch auch festen Teil ganz ablösen', t: 'chk', x: 1, show: () => S.strategy === 'top' },
+      { k: 'sonderPct', l: 'Sondertilgungsrecht', u: '% p. a.', s: 1, x: 1 },
+      { k: 'vfeDrop', l: 'Marktzins bei Ablösung niedriger um', u: '%-Pkt.', s: 0.25, x: 1, h: 'erhöht die Vorfälligkeitsentschädigung' },
+      { k: 'bankMaxPct', l: 'Bank: Rate höchstens', u: '% vom Netto', s: 5, x: 1 },
+      { k: 'minWorkAfterBuy', l: 'Nach dem Kauf noch arbeiten', u: 'Jahre', s: 0.5, x: 1, h: 'für die Strategie-Suche' },
+    ], out: outHouseLoan },
+  { id: 'd3', t: 'Rente & Sicherheitstank', sub: () => { const r = MAIN_RUN && MAIN_RUN.retire; return r ? `Tank ${fR(r.topf1, r.y)} · ${fBtc(r.btcAfter)} Bitcoin-Reserve` : ''; },
+    ex: `In der Rente leben Sie aus dem <b>Sicherheitstank</b> ${help(GLOSS.tank)}. Die übrigen Bitcoin bleiben als Reserve und werden nur in Hochs verkauft. Alle Ausgaben steigen mit der Inflation.`,
+    fields: [
+      { k: 'kv', l: 'Krankenversicherung', u: '€/Monat', s: 10, h: 'freiwillig gesetzlich ca. 280–1.200 € – mit der Kasse klären' },
+      { k: 'topf1Target', l: 'Sicherheitstank', u: '€', s: 10000 },
+      { k: 'kid1', l: 'Geburtsjahr Kind 1', s: 1, h: '0 = kein Kind' },
+      { k: 'kid2', l: 'Geburtsjahr Kind 2', s: 1, h: '0 = kein Kind' },
+      { k: 'pensionOn', l: 'Gesetzliche Rente ab 67', t: 'chk' },
+      { k: 'pension', l: 'Gesetzliche Rente (heute)', u: '€/Monat', s: 50, show: () => S.pensionOn },
+      { k: 'inflation', l: 'Inflation', u: '% p. a.', s: 0.1, x: 1 },
+      { k: 'maintPct', l: 'Instandhaltung Haus', u: '% vom Wert', s: 0.1, x: 1 },
+      { k: 'kidsMonthly', l: 'Extra pro Kind bis 18', u: '€/Monat', s: 50, x: 1 },
+      { k: 'tankMode', l: 'Tank füllen', t: 'sel', x: 1, o: [['top', 'im Bitcoin-Hoch davor'], ['retire', 'zum Rentenstart']] },
+      { k: 'tankLead', l: 'Hoch suchen bis zu … vorher', u: 'Jahre', s: 1, x: 1, show: () => S.tankMode === 'top' },
+      { k: 'topf1Return', l: 'Rendite Tank', u: '% p. a.', s: 0.1, x: 1 },
+      { k: 'topf1Equity', l: 'Aktien-ETF-Anteil im Tank', u: '%', s: 5, x: 1 },
+      { k: 'refillTo', l: 'Im Hoch auffüllen auf', u: 'Jahresausgaben', s: 0.5, x: 1 },
+      { k: 'ageEnd', l: 'Planen bis Alter', s: 1, x: 1 },
+      { k: 'dca', l: 'BTC-Sparplan bis Rente', u: '€/Monat', s: 50, x: 1 },
+      { k: 'cashRate', l: 'Tagesgeld-Zins', u: '% p. a.', s: 0.1, x: 1 },
+      { k: 'taxFreeFrom', l: 'Bitcoin steuerfrei ab', t: 'date', x: 1 },
+    ], out: outRetire },
+  { id: 'd4', t: 'Stresstest & Zeitachse', sub: () => { const st = STRESS || []; const bad = st.filter(t => t.status === 'red').length; return `${st.length - bad} von ${st.length} Belastungsproben bestanden`; },
+    ex: 'Ein guter Plan hält auch, wenn es schlecht läuft: Bitcoin bricht zum Rentenstart ein, der Trend flacht ab, der Zyklus bleibt aus, Zinsen oder Inflation steigen.',
+    fields: [], out: outStress },
+];
+
+let MAIN_RUN = null, SCEN_RUNS = {}, STRESS = null, MYPLAN = null;
+const OPEN = new Set((() => { try { return JSON.parse(localStorage.getItem(STORE + '-open') || '[]'); } catch (e) { return []; } })());
+
+function fieldHtml(f) {
+  if (f.show && !f.show()) return '';
+  if (f.x && !S.expert) return '';
+  const v = S[f.k];
+  if (f.t === 'sel') return `<label class="f"><span>${f.l}</span><select data-k="${f.k}" ${f.num ? 'data-num="1"' : ''}>${f.o.map(([val, lab]) => `<option value="${val}"${String(v) === String(val) ? ' selected' : ''}>${lab}</option>`).join('')}</select></label>`;
+  if (f.t === 'chk') return `<label class="f chk"><input type="checkbox" data-k="${f.k}" ${v ? 'checked' : ''}><span>${f.l}</span></label>`;
+  if (f.t === 'date') return `<label class="f"><span>${f.l}</span><div class="inp"><input type="date" data-k="${f.k}" value="${v}"></div></label>`;
+  return `<label class="f"><span>${f.l}</span><div class="inp"><input type="number" inputmode="decimal" data-k="${f.k}" value="${v}" step="${f.s ?? 'any'}"><em>${f.u || ''}</em></div>${f.h ? `<small>${f.h}</small>` : ''}</label>`;
+}
+
+// ---------- ① Ihre Lage ----------
+function renderLage() {
+  const age = Math.floor(ENV.nowYear) - S.birthYear;
+  document.getElementById('secLage').innerHTML = `
+    <div class="sechead"><span class="num">1</span><div><h2>Ihre Lage</h2><p class="lead">Acht Angaben genügen. Alles Weitere ist sinnvoll vorbelegt und unten unter „Details“ änderbar.</p></div></div>
+    ${S.example ? `<div class="exbanner" id="exBanner"><b>Beispielwerte.</b> Tragen Sie Ihre eigenen Zahlen ein oder laden Sie einen gespeicherten Plan (unten „Plan importieren“). Ihre Angaben bleiben nur auf diesem Gerät.</div>` : ''}
+    <div class="fields lage">${LAGE.map(fieldHtml).join('')}</div>
+    <p class="note" id="lageNote">Heute ${age} Jahre · Überschuss ${fEur(S.netIncome - S.expenses)}/Monat · Bitcoin-Wert ${fEurS(S.btc * env().priceEur)}</p>`;
+}
+
+// ---------- ③ Ihr Plan: Regler ----------
+function renderLevers() {
+  document.getElementById('sliders').innerHTML = LEVERS.filter(m => !m.show || m.show()).map(m => `
+    <div class="sl"><label><span>${m.l}</span><b data-slv="${m.k}">${m.f(S[m.k])}</b></label>
+    <input type="range" data-k="${m.k}" min="${m.min}" max="${m.max}" step="${m.s}" value="${S[m.k]}"></div>`).join('')
+    + (S.buyHouse && S.finMode !== 'maxSell' ? '<p class="note">Bitcoin-Einsatz wird im Expertenmodus über „Eigenkapital festlegen“ gesteuert.</p>' : '');
+}
+function syncLevers() { LEVERS.forEach(m => { const b = document.querySelector(`[data-slv="${m.k}"]`); if (b) b.textContent = m.f(S[m.k]); }); }
+
+// ---------- Details ----------
+function buildSteps() {
+  document.getElementById('steps').innerHTML = CARDS.map(c => `
+    <details class="step" id="${c.id}" ${OPEN.has(c.id) ? 'open' : ''}>
+      <summary><span class="t"><b>${c.t}</b><small data-sub></small></span><span class="chev">›</span></summary>
+      <div class="body">
+        <div class="explain">${c.ex}</div>
+        ${c.fields.length ? `<div class="fields" data-fields></div>` : ''}
+        <div data-out></div>
+      </div>
+    </details>`).join('');
+  CARDS.forEach(c => {
+    const d = document.getElementById(c.id);
+    d.addEventListener('toggle', () => { d.open ? OPEN.add(c.id) : OPEN.delete(c.id); try { localStorage.setItem(STORE + '-open', JSON.stringify([...OPEN])); } catch (e) {} if (d.open) d.querySelector('[data-out]').innerHTML = c.out(); });
+  });
+  renderFields();
+}
+function renderFields() {
+  CARDS.forEach(c => { const f = document.querySelector(`#${c.id} [data-fields]`); if (f) f.innerHTML = c.fields.map(fieldHtml).join(''); });
+  const hidden = CARDS.reduce((n, c) => n + c.fields.filter(f => f.x && (!f.show || f.show())).length, 0);
+  document.getElementById('expertTgl').checked = !!S.expert;
+  document.querySelector('.switch span').textContent = S.expert ? 'Expertenmodus an' : `Expertenmodus (${hidden} weitere Einstellungen)`;
+}
+
+// ---------- Eingaben ----------
+function setVal(k, raw, el) {
+  let v;
+  if (el.type === 'checkbox') v = el.checked;
+  else if (el.tagName === 'SELECT') v = el.dataset.num ? Number(raw) : raw;
+  else if (el.type === 'date') v = raw;
+  else { v = parseFloat(String(raw).replace(',', '.')); if (!isFinite(v)) return false; }
+  S[k] = v; return true;
+}
+document.addEventListener('input', e => {
+  const el = e.target, k = el.dataset.k;
+  if (!k || el.tagName === 'SELECT' || el.type === 'checkbox') return;
+  if (!setVal(k, el.value, el)) return;
+  if (k === 'birthYear') renderLevers();
+  if (['purchaseYear', 'btcMaxSell', 'retireYear'].includes(k)) S.fromFinder = false;
+  if (S.example && LAGE.some(f => f.k === k)) { S.example = false; const b = document.getElementById('exBanner'); if (b) b.remove(); }
+  syncLevers(); save(); schedule();
+});
+document.addEventListener('change', e => {
+  const el = e.target, k = el.dataset.k;
+  if (el.id === 'expertTgl') { S.expert = el.checked; save(); renderLage(); renderFields(); recalc(); return; }
+  if (!k || !(el.tagName === 'SELECT' || el.type === 'checkbox')) return;
+  setVal(k, el.value, el);
+  if (k === 'plModel' && S.plModel !== 'custom') { const m = S.plModel === 'fit' ? CORE.PL_FIT : CORE.PL_SANTO; S.plA = m.A; S.plN = m.n; }
+  save(); renderFields(); renderLevers(); if (k.startsWith('finder')) renderFinder(); schedule();
+});
+document.addEventListener('click', e => {
+  const t = e.target;
+  const sc = t.closest('[data-scen]'); if (sc) { S.scenario = sc.dataset.scen; save(); schedule(); }
+  const hp = t.closest('[data-help]'); if (hp) { e.preventDefault(); showHelp(hp); }
+  else if (!t.closest('#tip')) hideHelp();
+  if (t.closest('#bReal')) { S.realView = !S.realView; save(); recalc(); renderFinder(); }
+  if (t.closest('#bTheme')) { S.theme = { auto: 'light', light: 'dark', dark: 'auto' }[S.theme] || 'auto'; save(); applyTheme(); recalc(); }
+  if (t.closest('#bPrice')) { // Bitcoin-Kurs ändern: Modell-Karte öffnen und Feld fokussieren
+    const d = document.getElementById('d1'); d.open = true;
+    const f = d.querySelector('input[data-k="btcManual"]'); if (f) { f.scrollIntoView({ behavior: 'smooth', block: 'center' }); setTimeout(() => f.focus(), 350); }
+  }
+  const ap = t.closest('[data-apply]'); if (ap) applyFinder(ap.dataset.apply);
+  if (t.closest('#bUndo')) undoPlan();
+  if (t.closest('#fRun')) runFinder();
+});
+// Erklär-Blase für Fachbegriffe
+function showHelp(btn) {
+  hideHelp();
+  const tip = document.createElement('div'); tip.id = 'tip'; tip.textContent = btn.dataset.help; document.body.appendChild(tip);
+  const r = btn.getBoundingClientRect(), w = Math.min(320, window.innerWidth - 32);
+  tip.style.width = w + 'px';
+  tip.style.left = Math.max(16, Math.min(window.innerWidth - w - 16, r.left + r.width / 2 - w / 2)) + 'px';
+  tip.style.top = (window.scrollY + r.bottom + 8) + 'px';
+}
+function hideHelp() { const t = document.getElementById('tip'); if (t) t.remove(); }
+
+// Zurücksetzen mit Bestätigung in der Seite (Dialogfenster sind im claude.ai-Link gesperrt)
+let resetArmed = null;
+document.getElementById('bReset').onclick = e => {
+  const b = e.currentTarget;
+  if (!resetArmed) {
+    b.textContent = 'Wirklich alles zurücksetzen? Nochmal tippen'; b.classList.add('danger');
+    resetArmed = setTimeout(() => { resetArmed = null; b.textContent = 'Alles zurücksetzen'; b.classList.remove('danger'); }, 4000);
+    return;
+  }
+  clearTimeout(resetArmed); resetArmed = null; b.textContent = 'Alles zurücksetzen'; b.classList.remove('danger');
+  S = structuredClone(DEFAULTS); FRESH = true; save(); try { localStorage.removeItem(STORE + '-finder'); } catch (e) {} FINDER.res = null; buildAll(); maybeAutoRun(true);
+};
+// Export: im claude.ai-Link über die Download-Freigabe, lokal als normaler Download
+document.getElementById('bExport').onclick = async () => {
+  const filename = 'finanzplan-' + new Date().toISOString().slice(0, 10) + '.json', data = JSON.stringify(S, null, 2);
+  if (window.claude && typeof window.claude.use === 'function') {
+    try { const dl = await window.claude.use('downloads'); if (dl) { await dl.save({ filename, data }); return; } }
+    catch (err) { if (err && err.code) return; } // abgelehnt oder nicht verfügbar
+  }
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([data], { type: 'application/json' }));
+  a.download = filename; a.click();
+};
+document.getElementById('bImport').onclick = () => document.getElementById('fImport').click();
+document.getElementById('fImport').onchange = async e => {
+  const f = e.target.files[0]; e.target.value = '';
+  try {
+    const j = JSON.parse(await f.text()); if (!j || typeof j !== 'object') throw 0;
+    S = { ...DEFAULTS, ...j, example: false }; save(); FINDER.res = null; buildAll(); maybeAutoRun(true);
+    document.getElementById('secLage').scrollIntoView({ behavior: 'smooth' });
+  } catch (err) { const b = document.getElementById('bImport'); b.textContent = 'Datei nicht lesbar – andere wählen'; setTimeout(() => b.textContent = 'Plan importieren', 4000); }
+};
+
+let pending = false;
+function schedule() { if (pending) return; pending = true; requestAnimationFrame(() => { pending = false; recalc(); }); }
+
+// ---------- SVG-Diagramme ----------
+function niceTicks(min, max, n = 5) {
+  const span = max - min || 1, step0 = span / n, mag = Math.pow(10, Math.floor(Math.log10(step0)));
+  const step = [1, 2, 2.5, 5, 10].map(m => m * mag).find(s => span / s <= n) || mag * 10;
+  const out = []; for (let v = Math.ceil(min / step) * step; v <= max + 1e-9; v += step) out.push(v); return out;
+}
+function shortNum(v) {
+  const a = Math.abs(v);
+  if (a >= 1e6) return nf(v / 1e6, 1) + ' Mio.';
+  if (a >= 1e3) return Math.round(v / 1e3).toLocaleString('de-DE') + ' Tsd.';
+  return Math.round(v).toLocaleString('de-DE');
+}
+function chartW() { const el = document.querySelector('details.step[open] .body') || document.querySelector('.wrap'); return Math.max(300, Math.min(980, (el.clientWidth || document.body.clientWidth) - 32)); }
+function chartSvg({ series, x0, x1, log = false, yMin, yMax, w = chartW(), h = 300, areas = null, vlines = [], points = [] }) {
+  h = Math.round(Math.min(h, w * 0.75));
+  const P = { l: 58, r: 10, t: 10, b: 24 }, W = w - P.l - P.r, H = h - P.t - P.b;
+  const X = x => P.l + (x - x0) / (x1 - x0) * W;
+  const ly = v => Math.log10(Math.max(v, 1e-9));
+  const Y = log ? v => P.t + H - (ly(v) - ly(yMin)) / (ly(yMax) - ly(yMin)) * H : v => P.t + H - (v - yMin) / (yMax - yMin) * H;
+  let g = '';
+  let yt;
+  if (log) { yt = []; for (let e = Math.floor(ly(yMin)); e <= Math.ceil(ly(yMax)); e++) [1, 3].forEach(m => { const v = m * Math.pow(10, e); if (v >= yMin && v <= yMax) yt.push(v); }); }
+  else yt = niceTicks(yMin, yMax, 5);
+  yt.forEach(v => { const y = Y(v); g += `<line x1="${P.l}" x2="${w - P.r}" y1="${y}" y2="${y}" stroke="var(--line)"/><text x="${P.l - 6}" y="${y + 4}" text-anchor="end">${shortNum(v)}</text>`; });
+  niceTicks(x0, x1, w < 500 ? 4 : 8).filter(v => Number.isInteger(v)).forEach(v => { g += `<text x="${X(v)}" y="${h - 6}" text-anchor="middle">${v}</text>`; });
+  vlines.forEach((v, i) => { if (v.x >= x0 && v.x <= x1) g += `<line x1="${X(v.x)}" x2="${X(v.x)}" y1="${P.t}" y2="${P.t + H}" stroke="var(--muted)" stroke-dasharray="3 3" opacity=".6"/><text x="${X(v.x) + 4}" y="${P.t + 12 + i * 14}" text-anchor="start">${v.label}</text>`; });
+  if (areas) {
+    let base = areas.xs.map(() => 0);
+    areas.layers.forEach(L => {
+      const top = L.vals.map((v, i) => base[i] + Math.max(0, v));
+      const pts = areas.xs.map((x, i) => `${X(x).toFixed(1)},${Y(top[i]).toFixed(1)}`).join(' ');
+      const back = areas.xs.map((x, i) => `${X(x).toFixed(1)},${Y(base[i]).toFixed(1)}`).reverse().join(' ');
+      g += `<polygon points="${pts} ${back}" fill="${L.color}" opacity=".85"/>`;
+      base = top;
+    });
+  }
+  (series || []).forEach(s => {
+    const d = s.pts.filter(p => isFinite(p[1]) && (!log || p[1] > 0)).map((p, i) => `${i ? 'L' : 'M'}${X(p[0]).toFixed(1)},${Y(Math.min(Math.max(p[1], yMin), yMax)).toFixed(1)}`).join('');
+    g += `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="${s.wd || 2}" ${s.dash ? `stroke-dasharray="${s.dash}"` : ''} stroke-linejoin="round"/>`;
+  });
+  points.forEach(p => { g += `<circle cx="${X(p.x)}" cy="${Y(p.y)}" r="5" fill="${p.color}" stroke="var(--card)" stroke-width="2"/><text x="${X(p.x) + 8}" y="${Y(p.y) + 4}" style="fill:var(--ink);font-weight:600">${p.label}</text>`; });
+  return `<svg class="chart" viewBox="0 0 ${w} ${h}" role="img">${g}</svg>`;
+}
+const legend = items => `<div class="legend">${items.map(([c, l]) => `<span><i style="background:${c}"></i>${l}</span>`).join('')}</div>`;
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+// ---------- Detail-Ausgaben ----------
+function outModel() {
+  const e = env(), now = e.nowYear, fx = e.usdPerEur, x0 = 2012, x1 = 2046;
+  const fvNow = CORE.plUsd(now, S.plA, S.plN) / fx;
+  const pts = (f, a0 = x0) => { const a = []; for (let y = a0; y <= x1; y += 0.1) a.push([y, f(y)]); return a; };
+  const fvU = y => CORE.plUsd(y, S.plA, S.plN);
+  const paths = { sup: CORE.pricePath(S, e, 'sup'), fair: CORE.pricePath(S, e, 'fair'), res: CORE.pricePath(S, e, 'res') };
+  const hist = (typeof HIST !== 'undefined' ? HIST : []).filter(p => p[0] >= x0);
+  const chart = chartSvg({
+    x0, x1, log: true, yMin: 1, yMax: 3e7, h: 340,
+    series: [
+      { pts: hist, color: css('--c-tank'), wd: 1.3 },
+      { pts: pts(fvU), color: css('--ink'), wd: 1.5, dash: '6 4' },
+      ...['sup', 'res'].map(k => ({ pts: pts(y => paths[k](y).price * fx, now), color: css('--c-band'), wd: 1.3 })),
+      { pts: pts(y => paths[S.scenario](y).price * fx, now), color: css('--c-btc'), wd: 2.5 },
+    ],
+    vlines: S.buyHouse ? [{ x: S.purchaseYear, label: 'Kauf' }, { x: S.retireYear, label: 'Rente' }] : [{ x: S.retireYear, label: 'Rente' }],
+    points: [{ x: now, y: e.priceEur * fx, color: css('--c-btc'), label: 'heute' }],
+  });
+  let rows = '';
+  for (let y = Math.floor(now); y <= Math.max(S.retireYear + 3, 2038); y++) {
+    const t = y + 0.5, isBuy = S.buyHouse && y === Math.floor(S.purchaseYear);
+    rows += `<tr${isBuy || y === S.retireYear ? ' class="hl"' : ''}><td>${y}${isBuy ? ' · Kauf' : ''}${y === S.retireYear ? ' · Rente' : ''}</td><td>${CORE.cycleLabel(S, t) || '–'}</td>${['sup', 'fair', 'res'].map(k => `<td${k === S.scenario ? ' style="font-weight:700"' : ''}>${fEurS(paths[k](t).price)}</td>`).join('')}<td>${fEurS(fvU(t) / fx)}</td></tr>`;
+  }
+  return `
+    <div class="tiles">
+      <div class="tile"><small>Bitcoin heute</small><b>${fEur(e.priceEur)}</b><em>${S.btcManual > 0 ? 'manuell' : priceSrc()}</em></div>
+      <div class="tile"><small>Trendwert heute</small><b>${fEur(fvNow)}</b><em>Kurs = ${nf(e.priceEur / fvNow)} × Trendwert (Tiefs bisher ≈ 0,41 ×)</em></div>
+    </div>
+    ${chart}
+    ${legend([[css('--c-tank'), 'Echter Kurs (USD)'], [css('--ink'), 'Trendwert'], [css('--c-band'), 'Schlecht / Gut'], [css('--c-btc'), 'Gewählt: ' + SCEN[S.scenario][0]]])}
+    <details class="more"><summary>Kurspfade als Tabelle</summary>
+    <div class="tbl"><table><tr><th>Jahr</th><th>Zyklus</th><th>Schlecht</th><th>Normal</th><th>Gut</th><th>Trendwert</th></tr>${rows}</table></div>
+    <p class="note">Bitcoin-Kurse nominal in Euro (Jahresmitte, heutiger Wechselkurs). Diagramm in US-Dollar, logarithmisch. Der Zyklus ist ein Muster aus nur vier Durchläufen.</p></details>`;
+}
+
+function outHouseLoan() {
+  if (!S.buyHouse) return '<p class="note">Kein Hauskauf geplant – die Miete läuft in der Rente weiter.</p>';
+  const p = MAIN_RUN.purchase, e = env();
+  if (!p) return `<p class="note">Der Kaufzeitpunkt ${fQ(S.purchaseYear)} liegt außerhalb des Planungszeitraums.</p>`;
+  const surplus = S.netIncome - S.expenses + S.rent;
+  let h = `<div class="tiles">
+    <div class="tile"><small>Kaufpreis ${fQ(S.purchaseYear)}</small><b>${fEurS(p.hp)}</b><em>+ ${fEurS(p.nk.sum)} Nebenkosten (${fPct(p.nk.pct, 1)})</em></div>
+    <div class="tile"><small>Aus Bitcoin</small><b>${fBtc(p.btcSold)}</b><em>= ${fEurS(p.btcSold * p.price)} bei ${fEurS(p.price)}/BTC${p.cashUsed > 0 ? ` · + ${fEurS(p.cashUsed)} Erspartes` : ''}</em></div>
+    <div class="tile"><small>Kredit</small><b>${fEurS(p.loanAmt)}</b><em>${fPct(p.rate * 100)} Zins${S.rateMode === 'auto' ? ' (geschätzt)' : ''}</em></div>
+    <div class="tile"><small>Monatsrate</small><b>${fEur(p.pmt)}</b><em>Bank erlaubt bis ${fEur(p.bankMax)}</em></div>
+  </div>`;
+  if (p.parts && p.parts.length > 1) h += `<div class="tbl"><table><tr><th>Teil</th><th>Betrag</th><th>Zins</th><th>Rate</th><th>Ablösen ohne Gebühr</th></tr>
+    ${p.parts.map(x => `<tr><td>${x.flex ? 'variabel' : `fest (${S.fixYears} J.)`}</td><td>${fEur(x.amt)}</td><td>${fPct(x.rate * 100)}</td><td>${fEur(x.pmt)}</td><td>${x.flex ? 'jederzeit' : `ab ${fQ(S.purchaseYear + Math.min(S.fixYears, 10))}`}</td></tr>`).join('')}
+    </table></div>`;
+  if (MAIN_RUN.payoff || MAIN_RUN.events.some(ev => /Sondertilgung/.test(ev.txt))) {
+    const evs = MAIN_RUN.events.filter(ev => ev.type === 'loan' && /abgelöst|Sondertilgung/.test(ev.txt)).slice(0, 4);
+    h += `<p class="note"><b>Tilgung (Fall „${SCEN[S.scenario][0]}“):</b> ${evs.map(ev => `${ev.t != null ? fQ(ev.t) : ev.y}: ${ev.txt}`).join(' · ')}</p>`;
+  } else if (S.strategy === 'top') h += `<div class="warn">Im Fall „${SCEN[S.scenario][0]}“ erreicht Bitcoin nie die Verkaufsschwelle (${nf(S.sellRatio)} × Trendwert) – der Kredit wird nur mit der normalen Rate getilgt.</div>`;
+  const annu = p.rate + S.tilgung / 100, maxLoan = Math.max(0, Math.min(surplus * 12, S.netIncome * S.bankMaxPct / 100 * 12) / annu);
+  h += `<p class="note">Tragbar wäre ein Kredit bis ca. <b>${fEurS(maxLoan)}</b> (Überschuss nach Wegfall der Miete ${fEur(surplus)}/Monat, Bankgrenze ${S.bankMaxPct} % vom Netto).${S.splitOn && Math.abs(S.fixedPart - maxLoan) > 30000 ? ` Tipp: den festen Teil etwa auf diesen Betrag legen.` : ''}</p>`;
+  // Kreditvarianten (Vergleich, ohne Empfehlung)
+  const C = CORE.compareStrategies(S, e), cur = C.rows.find(r => r.fix === S.fixYears && r.strategy === S.strategy);
+  const ey = C.evalY, cell = b => `<td><span class="dot ${b.status}"></span>${fR(b.netEval, ey)}</td>`;
+  h += `<details class="more"><summary>Andere Zinsbindungen und Tilgungsarten vergleichen</summary>
+    <p class="note">Vermögen ${ey} (${KK()}) in den drei Fällen. Markiert: Ihre aktuelle Einstellung.</p>
+    <div class="tbl"><table><tr><th>Variante</th><th>Zins</th><th>Schlecht</th><th>Normal</th><th>Gut</th><th>Zinsen + Gebühr</th></tr>
+    ${C.rows.filter(r => r.strategy !== 'opp').map(r => `<tr${r === cur ? ' class="hl"' : ''}><td>${r.fix} J. · ${STRAT_S[r.strategy]}</td><td>${fPct(r.by.fair.rate * 100)}</td>${cell(r.by.sup)}${cell(r.by.fair)}${cell(r.by.res)}<td>${fEurS(r.by.fair.cost)}</td></tr>`).join('')}
+    </table></div>
+    <ul class="check">
+      <li><b>Zinsbindung ≠ Laufzeit:</b> Sie legt nur fest, wie lange der Zins fix ist.</li>
+      <li><b>Nach 10 Jahren</b> ist jeder Kredit ohne Gebühr kündbar (§ 489 BGB). ${help(GLOSS.vfe)}</li>
+      <li><b>Im Hoch tilgen</b> spart Bitcoin – geht aber ohne Gebühr nur beim variablen Teil oder per Sondertilgung.</li>
+    </ul></details>`;
+  return h;
+}
+
+function outRetire() {
+  const R = MAIN_RUN, r = R.retire;
+  if (!r) return '<p class="note">Der Rentenstart liegt außerhalb des Planungszeitraums.</p>';
+  const rows = R.rows.filter(x => x.y <= S.retireYear + 20), xs = rows.map(x => x.y + 0.5);
+  const d = x => defl(x.y + 0.5);
+  const chart = chartSvg({
+    x0: rows[0].y, x1: rows[rows.length - 1].y + 1, yMin: 0,
+    yMax: Math.max(1, ...rows.map(x => (Math.max(0, x.houseVal - x.debt) + Math.max(0, x.cash + x.topf1) + x.btcVal) / d(x))) * 1.05,
+    areas: { xs, layers: [
+      { vals: rows.map(x => (x.houseVal - x.debt) / d(x)), color: css('--c-house') },
+      { vals: rows.map(x => (x.cash + x.topf1) / d(x)), color: css('--c-tank') },
+      { vals: rows.map(x => x.btcVal / d(x)), color: css('--c-btc') },
+    ] },
+    vlines: (S.buyHouse ? [{ x: S.purchaseYear, label: 'Kauf' }] : []).concat([{ x: S.retireYear, label: 'Rente' }]).concat(R.failYear ? [{ x: R.failYear, label: 'Geld leer' }] : []),
+  });
+  const ae = r.annualExp || 1;
+  return `
+    <div class="tiles">
+      <div class="tile"><small>Ausgaben im 1. Rentenjahr</small><b>${fRf(ae / 12, r.y)}/Monat</b><em>${KK()}, inkl. KV und Haus</em></div>
+      <div class="tile"><small>Sicherheitstank</small><b>${fR(r.topf1, r.y)}</b><em>reicht ca. ${nf(r.tankYears, 1)} Jahre</em></div>
+      <div class="tile"><small>Bitcoin-Reserve</small><b>${fBtc(r.btcAfter)}</b><em>Wert ${fR(r.btcAfter * r.price, r.y)}</em></div>
+      <div class="tile"><small>Jährliche Entnahme</small><b>${isFinite(r.swr) ? fPct(r.swr, 1) : '> 100 %'}</b><em>vom liquiden Vermögen – ${r.swr <= 3.5 ? 'vorsichtig' : r.swr <= 5 ? 'mittel' : 'hoch'}</em></div>
+    </div>
+    ${chart}
+    ${legend([[css('--c-house'), 'Haus abzgl. Kredit'], [css('--c-tank'), 'Sicherheitstank + Erspartes'], [css('--c-btc'), 'Bitcoin']])}
+    <p class="note">Vermögen ${KK()}, Fall „${SCEN[S.scenario][0]}“, 20 Jahre ab Rentenstart. Der Tank wird in Bitcoin-Hochs (≥ ${nf(S.sellRatio)} × Trendwert) auf ${S.refillTo} Jahresausgaben aufgefüllt.</p>
+    ${R.taxableSales.some(x => x.gain > 0) ? '<div class="warn">Achtung: Ein geplanter Bitcoin-Verkauf liegt vor Ablauf der 1-Jahres-Haltefrist (vorsichtig mit 40 % Steuer gerechnet).</div>' : ''}`;
+}
+
+function outStress() {
+  const st = STRESS || [];
+  let h = `<div class="stress">${st.map(t => `<div><span class="dot ${t.status}"></span><span><b>${t.name}</b><br>${t.reason}</span></div>`).join('')}</div>`;
+  const R = MAIN_RUN, endT = Math.min(S.retireYear + 5, R.rows[R.rows.length - 1].y);
+  h += `<h3>Zeitachse (Fall „${SCEN[S.scenario][0]}“, Vermögen ${KK()})</h3><div class="tbl"><table>
+    <tr><th>Jahr</th><th>Alter</th><th>Bitcoin-Kurs</th><th>BTC</th><th>Schulden</th><th>Tank + Erspartes</th><th>Vermögen</th><th>Ereignis</th></tr>
+    ${R.rows.filter(r => r.y <= endT).map(r => `<tr${r.y === S.retireYear ? ' class="hl"' : ''}><td>${r.y}</td><td>${r.age}</td><td>${fEurS(r.price)}</td><td>${nf(r.btc)}</td><td>${fEurS(r.debt)}</td><td>${fR(r.cash + r.topf1, r.y + 0.5)}</td><td><b>${fR(r.net, r.y + 0.5)}</b></td><td class="l">${R.events.filter(e => e.y === r.y).map(e => (e.t != null ? fQ(e.t) + ': ' : '') + e.txt).join('<br>')}</td></tr>`).join('')}
+  </table></div><p class="note">Kurse, Schulden und Ereignis-Beträge nominal.</p>`;
+  return h;
+}
+
+// ---------- Hauptberechnung ----------
+function recalc() {
+  const e = env();
+  MAIN_RUN = CORE.simulate(S, e);
+  ['sup', 'fair', 'res'].forEach(sc => SCEN_RUNS[sc] = sc === S.scenario ? MAIN_RUN : CORE.simulate(S, e, { scen: sc }));
+  STRESS = CORE.stressTests(S, e);
+  MYPLAN = CORE.evalPlan(S, e);
+
+  document.getElementById('chips').innerHTML = `
+    <button class="chip tgl" id="bPrice" title="Bitcoin-Kurs ändern">Bitcoin <b>${fEur(e.priceEur)}</b> · ${S.btcManual > 0 ? 'von Ihnen eingetragen' : priceSrc()} ✎</button>
+    <span class="chip">Bauzins 10 J. ca. <b>${fPct(CORE.estimateRate(ENV.bund, 10, S.spread, 0.8))}</b> · ${bundSrc()}</span>
+    <button class="chip tgl" id="bReal" title="Umschalten">Beträge: <b>${S.realView ? 'heutige Kaufkraft' : 'nominal'}</b> ⇄</button>`;
+  const tb = document.getElementById('bTheme');
+  tb.innerHTML = `<span aria-hidden="true">${THEME_I[S.theme]}</span> <b>${THEME_L[S.theme]}</b>`;
+  tb.setAttribute('aria-label', `Darstellung: ${THEME_L[S.theme]} – tippen zum Wechseln`);
+
+  const R = MAIN_RUN, age = S.retireYear - S.birthYear, word = WORD(R);
+  document.getElementById('verdict').innerHTML = `<div class="verdict ${R.status}"><div class="lamp ${R.status}"></div><div>
+    <h2>Rente mit ${age} ab ${S.retireYear}: ${word}</h2><p>${R.reasons[0] || ''}</p></div></div>`;
+  document.getElementById('flags').innerHTML = R.flags.length ? `<div class="flags">${R.flags.map(f => `<span class="fl s${f.sev}" title="${f.text}">${f.sev >= 3 ? '✕' : f.sev === 2 ? '!' : 'i'} ${f.short}</span>`).join('')}</div>` : '';
+  document.getElementById('scen').innerHTML = Object.entries(SCEN).map(([k, [a]]) =>
+    `<button data-scen="${k}" class="${S.scenario === k ? 'on' : ''}"><span><span class="dot ${SCEN_RUNS[k].status}"></span><b>${a}</b></span><small>${scenSub(k)}</small></button>`).join('');
+  document.getElementById('miniDot').className = 'dot ' + R.status;
+  document.getElementById('miniTxt').textContent = `Rente ${S.retireYear} (${age}): ${word} · ${SCEN[S.scenario][0]}`;
+
+  const re = R.retire, pu = R.purchase;
+  document.getElementById('kpis').innerHTML = `
+    <div class="kpi"><small>Vermögen zum Rentenstart</small><b>${re ? fR(re.net, re.y) : '–'}</b><em>${KK()}, inkl. Haus</em></div>
+    <div class="kpi"><small>Bitcoin zum Rentenstart</small><b>${re ? fBtc(re.btcAfter) : '–'}</b><em>${re ? fR(re.btcAfter * re.price, re.y) : ''}</em></div>
+    <div class="kpi"><small>Sicherheitstank reicht</small><b>${re ? nf(re.tankYears, 1) + ' Jahre' : '–'}</b><em>${re ? fR(re.topf1, re.y) : ''}</em></div>
+    <div class="kpi"><small>Kreditrate</small><b>${pu && pu.pmt ? fEur(pu.pmt) : '–'}</b><em>${pu && pu.loanAmt ? fEurS(pu.loanAmt) + ' Kredit' : (S.buyHouse ? 'kein Kredit' : 'kein Hauskauf')}</em></div>`;
+
+  renderCompare();
+  const ln = document.getElementById('lageNote');
+  if (ln) ln.textContent = `Heute ${Math.floor(ENV.nowYear) - S.birthYear} Jahre · Überschuss ${fEur(S.netIncome - S.expenses)}/Monat · Bitcoin-Wert ${fEurS(S.btc * e.priceEur)}`;
+
+  CARDS.forEach(c => {
+    const d = document.getElementById(c.id); if (!d) return;
+    d.querySelector('[data-sub]').textContent = c.sub();
+    if (d.open) d.querySelector('[data-out]').innerHTML = c.out(); // nur offene Karten rendern
+  });
+  renderFinderStale();
+  maybeAutoRun();
+}
+
+// ---------- Vergleich „Mein Plan ↔ Empfehlung“ ----------
+function planCells(p) {
+  if (!p) return ['–', '–', '–', '–', '–', '–'];
+  return [p.noHouse ? 'kein Haus' : `${fQ(p.buy)} · ${fBtc(p.sell)}`, `${p.retire} (${p.age})`, CORE.WORLDS.map(w => `<span class="dot ${p.status[w.key]}" title="${W_SHORT[w.key]}"></span>`).join(''),
+    fBtc(p.fair.btcRetire), fR(p.worst60, S.birthYear + 60), p.noHouse ? '–' : fEurS(p.fair.loan)];
+}
+function renderCompare() {
+  const el = document.getElementById('compare'), best = FINDER.res && FINDER.res.ranked[0];
+  if (!best) { el.innerHTML = ''; return; }
+  const same = !best.noHouse && S.buyHouse && Math.abs(best.buy - S.purchaseYear) < 0.01 && best.retire === S.retireYear && Math.abs(best.sell - S.btcMaxSell) < 0.01 && S.finMode === 'maxSell';
+  const a = planCells(MYPLAN), b = planCells(best);
+  const lab = ['Hauskauf · Bitcoin-Einsatz', 'Rentenstart (Alter)', `Sicher in allen Fällen? ${help(GLOSS.welten)}`, 'Bitcoin zum Rentenstart (Normal)', `Vermögen mit 60, schlechtester Fall (${KK()})`, 'Kredit'];
+  el.innerHTML = `<h3>Mein Plan ↔ Empfehlung</h3>
+    <div class="tbl cmp"><table><tr><th></th><th>Mein Plan</th><th>Empfehlung</th></tr>
+    ${lab.map((l, i) => `<tr><td>${l}</td><td>${a[i]}</td><td>${b[i]}</td></tr>`).join('')}</table></div>
+    <div class="row">${same ? '<span class="good" style="margin:0">Ihr Plan entspricht der Empfehlung.</span>' : `<button class="primary" data-apply="ranked:0">Empfehlung übernehmen</button>`}
+    ${S.prevPlan ? `<button id="bUndo">Rückgängig: vorheriger Plan</button>` : ''}</div>`;
+}
+
+// ===================== ② Strategie-Finder =====================
+const FINDER = { running: false, res: null, sig: null, queued: false, timer: null };
+const FINDER_FREE = ['scenario', 'purchaseYear', 'btcMaxSell', 'finMode', 'tankMode', 'retireYear', 'payoffYear', 'buyHouse', 'priceBasis', 'realView', 'expert', 'prevPlan', 'fromFinder', 'btcManual', 'theme'];
+function finderSig() { const o = { ...S }; FINDER_FREE.forEach(k => delete o[k]); return JSON.stringify(o); }
+(function loadFinder() { try { const j = JSON.parse(localStorage.getItem(STORE + '-finder')); if (j && j.res) { FINDER.res = j.res; FINDER.sig = j.sig; } } catch (e) {} })();
+function saveFinder() { try { localStorage.setItem(STORE + '-finder', JSON.stringify({ sig: FINDER.sig, res: FINDER.res })); } catch (e) {} }
+// veraltet, wenn sich Angaben geändert haben oder der Bitcoin-Kurs seit der Suche um mehr als 5 % bewegt hat
+const stale = () => FINDER.res && (FINDER.sig !== finderSig() || (FINDER.res.price > 0 && Math.abs(env().priceEur / FINDER.res.price - 1) > 0.05));
+const wchips = st => `<div class="wchips">${CORE.WORLDS.map(w => `<span><span class="dot ${st[w.key]}"></span>${W_SHORT[w.key]}</span>`).join('')}</div>`;
+const dots = st => CORE.WORLDS.map(w => `<span class="dot ${st[w.key]}" title="${W_SHORT[w.key]}"></span>`).join('');
+
+function renderFinder() {
+  const el = document.getElementById('finder'), R = FINDER.res;
+  const fld = [
+    { k: 'finderGoal', l: 'Ziel', t: 'sel', o: [['earliest', 'So früh wie sicher möglich in Rente'], ['target', 'In einem bestimmten Jahr in Rente']] },
+    { k: 'finderTarget', l: 'Wunschjahr Rente', u: 'Jahr', s: 1, show: () => S.finderGoal === 'target' },
+    { k: 'finderBuyFrom', l: 'Hauskauf frühestens', u: 'Jahr', s: 1, x: 1 },
+    { k: 'finderBuyTo', l: 'Hauskauf spätestens', u: 'Jahr', s: 1, x: 1 },
+  ];
+  let h = `<div class="sechead"><span class="num">2</span><div><h2>Ihre Strategie</h2>
+    <p class="lead">Der Rechner probiert jedes Kaufquartal, jeden Bitcoin-Einsatz und jeden Rentenstart durch und nimmt nur Pläne, die auch im schlechten Fall halten ${help(GLOSS.welten)}.</p></div></div>
+    <div class="ctrl">${fld.map(fieldHtml).join('')}</div>
+    <div id="fStatus">${FINDER.running ? `<div class="prog"><i id="fBar" style="width:0%"></i></div><p class="note">Suche läuft … <span id="fProg">0 %</span></p>` : ''}</div>`;
+  if (R && !FINDER.running) h += finderResultHtml(R);
+  else if (!R && !FINDER.running) h += `<button class="primary big" id="fRun">Strategie berechnen</button>`;
+  el.innerHTML = h;
+  renderFinderStale();
+}
+function renderFinderStale() {
+  const s = document.getElementById('fStatus'); if (!s || FINDER.running) return;
+  s.innerHTML = stale() ? '<div class="stale">Ihre Angaben haben sich geändert – die Strategie wird gleich neu berechnet …</div>' : '';
+}
+function maybeAutoRun(now = false) {
+  if (FINDER.running) { if (stale()) FINDER.queued = true; return; }
+  if (FINDER.res && !stale()) return;
+  clearTimeout(FINDER.timer);
+  FINDER.timer = setTimeout(runFinder, now ? 50 : 1500);
+}
+
+function fahrplan(r) {
+  const items = [];
+  if (!r.noHouse) items.push(`<b>Bis ${fQ(r.buy)}:</b> sparen, alle Bitcoin halten, Finanzierung mit der Bank vorbereiten.`);
+  (r.fair.events || []).filter(e => e.y <= r.retire + 5 && (!/aufgefüllt/.test(e.txt) || e.y <= r.retire + 1))
+    .slice().sort((a, b) => (a.t ?? a.y + 0.5) - (b.t ?? b.y + 0.5))
+    .forEach(e => items.push(`<b>${e.t != null ? fQ(e.t) : e.y}:</b> ${e.txt}`));
+  return `<ol>${items.map(x => `<li>${x}</li>`).join('')}</ol>`;
+}
+
+function finderResultHtml(R) {
+  const best = R.ranked[0], goal = R.goal;
+  if (!best) return `<div class="bad">Kein Plan hält in allen drei Fällen. Stellschrauben: günstigeres Haus, niedrigeres Wunsch-Netto, späterer Rentenstart.</div>
+    ${R.noHouse && R.noHouse.retire ? `<p class="note">Ohne Hauskauf wäre ein sicherer Ausstieg ${R.noHouse.retire} (Alter ${R.noHouse.age}) möglich.</p>` : ''}`;
+  const next = R.byYear[1];
+  let h = `<div class="reco"><small>Empfehlung · ${goal === 'target' ? `Rente ${best.retire}, größtes Polster` : 'frühester sicherer Ausstieg'}</small>
+    <div class="big">${best.noHouse ? 'Kein Haus kaufen' : `Haus kaufen ${fQ(best.buy)} mit ${fBtc(best.sell)}`} · Rente ab Januar ${best.retire} (Alter ${best.age})</div>
+    ${wchips(best.status)}
+    <div class="tiles">
+      ${best.noHouse ? '' : `<div class="tile"><small>Kredit · Rate</small><b>${fEurS(best.fair.loan)}</b><em>${fEur(best.fair.pmt)}/Monat</em></div>`}
+      <div class="tile"><small>Bitcoin zum Rentenstart</small><b>${fBtc(best.fair.btcRetire)}</b><em>Fall „Normal“</em></div>
+      <div class="tile"><small>Vermögen mit 60</small><b>${fR(best.worst60, S.birthYear + 60)}</b><em>schlechtester Fall, ${KK()}</em></div>
+    </div>
+    ${next && next.worst60 > best.worst60 * 1.3 ? `<p class="note" style="margin:4px 0"><b>Abwägung:</b> Ein Jahr später (${next.retire}) wäre das Polster mit 60 etwa ${nf(next.worst60 / Math.max(1, best.worst60), 1)}-mal so groß.</p>` : ''}
+    <h3 style="margin-top:6px">Fahrplan</h3>${fahrplan(best)}
+    <button class="primary" data-apply="ranked:0">Als meinen Plan übernehmen</button></div>`;
+  if (R.byYear.length > 1) {
+    h += `<h3>Später aussteigen = mehr Sicherheit</h3><div class="tbl"><table><tr><th>Rente ab</th><th>Hauskauf</th><th>Einsatz</th><th>Sicher?</th><th>BTC zur Rente</th><th>Vermögen mit 60*</th><th></th></tr>
+      ${R.byYear.map((r, i) => `<tr${i === 0 ? ' class="hl"' : ''}><td>${r.retire} (${r.age})</td><td>${r.noHouse ? '–' : fQ(r.buy)}</td><td>${fBtc(r.sell)}</td><td>${dots(r.status)}</td><td>${fBtc(r.fair.btcRetire)}</td><td>${fR(r.worst60, S.birthYear + 60)}</td><td><button data-apply="byYear:${i}">wählen</button></td></tr>`).join('')}
+      </table></div><p class="note">* schlechtester der drei Fälle, ${KK()}.</p>`;
+  }
+  const ok = R.byBuy.filter(x => x.r), maxA = Math.max(...ok.map(x => x.r.age), 1), minA = Math.min(...ok.map(x => x.r.age), maxA);
+  h += `<details class="more"><summary>Wann kaufen? Ergebnis je Kaufquartal</summary><div class="tbl"><table><tr><th>Kauf</th><th>Bitcoin-Phase</th><th>${goal === 'target' ? 'Vermögen mit 60*' : 'Frühester sicherer Ausstieg'}</th><th>Einsatz</th></tr>
+    ${R.byBuy.map(x => { const r = x.r; const v = !r ? '<span class="dot red"></span>kein sicherer Plan' : goal === 'target' ? fR(r.worst60, S.birthYear + 60) : `${r.retire} (Alter ${r.age})<span class="bar" style="width:${Math.round(12 + 80 * (maxA - r.age) / Math.max(1, maxA - minA))}px"></span>`;
+      return `<tr${r && best.buy === x.buy && !best.noHouse ? ' class="hl"' : ''}><td>${fQ(x.buy)}</td><td>${CORE.cycleLabel({ ...S, cycleOn: true }, x.buy) || '–'}</td><td>${v}</td><td>${r ? fBtc(r.sell) : '–'}</td></tr>`; }).join('')}
+    </table></div><p class="note">Längerer Balken = früherer Ausstieg. Am günstigsten ist meist der Kauf im Anstieg vor einem Bitcoin-Hoch.</p></details>`;
+  if (R.noHouse) h += `<p class="note"><b>Zum Vergleich ohne Hauskauf</b> (Miete läuft weiter): ${R.noHouse.retire ? `sicherer Ausstieg ${R.noHouse.retire} (Alter ${R.noHouse.age}).` : 'kein sicherer Ausstieg bis 67.'}</p>`;
+  h += `<p class="note">Modellrechnung, keine Anlageberatung – sie hängt am Bitcoin-Trend und daran, dass sich der Zyklus fortsetzt.</p>`;
+  return h;
+}
+
+async function runFinder() {
+  if (FINDER.running) { FINDER.queued = true; return; }
+  clearTimeout(FINDER.timer);
+  FINDER.running = true; renderFinder();
+  const e = env(), goal = S.finderGoal, target = goal === 'target' ? S.finderTarget : null;
+  const o = { buyFrom: S.finderBuyFrom, buyTo: S.finderBuyTo + 0.75, retFrom: Math.floor(e.nowYear) + 1, retTo: Math.min(S.birthYear + 67, 2070),
+    sellOptions: [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2], target };
+  const grid = CORE.finderGrid(S, e, o), list = [];
+  const prog = p => { const b = document.getElementById('fBar'), t = document.getElementById('fProg'); if (b) b.style.width = Math.round(p * 100) + '%'; if (t) t.textContent = Math.round(p * 100) + ' %'; };
+  for (let i = 0; i < grid.length; i++) {
+    list.push(CORE.evalCombo(S, e, grid[i], o));
+    if (i % 12 === 11) { prog((i + 1) / grid.length * 0.8); await new Promise(r => setTimeout(r, 0)); }
+  }
+  const noHouse = CORE.evalCombo(S, e, { noHouse: true, sell: 0, tank: S.tankMode }, o); noHouse.noHouse = true;
+  let ranked = CORE.rankFinder(list, goal);
+  const byYear = [];
+  if (!target && ranked.length) {
+    const y0 = ranked[0].retire;
+    // je Kauf + Einsatz nur die bessere Tank-Variante weiterprüfen (spart die Hälfte der Rechenzeit)
+    const bestOf = new Map();
+    list.forEach(r => { if (r.retire == null) return; const k = r.buy + '|' + r.sell, b = bestOf.get(k);
+      if (!b || r.retire < b.retire || (r.retire === b.retire && r.worst60 > b.worst60)) bestOf.set(k, r); });
+    const pool = [...bestOf.values()];
+    for (let y = y0; y < y0 + 4; y++) {
+      const evals = [];
+      for (const r of pool) if (r.retire <= y) evals.push(CORE.evalCombo(S, e, { buy: r.buy, sell: r.sell, tank: r.tank }, { ...o, target: y }));
+      const cand = CORE.rankFinder(evals, 'target')[0];
+      if (cand) byYear.push(cand);
+      prog(0.8 + 0.2 * (y - y0 + 1) / 4); await new Promise(r => setTimeout(r, 0));
+    }
+    if (byYear[0]) ranked = [byYear[0], ...ranked.filter(r => r !== byYear[0])];
+  }
+  const strip = r => r ? ({ ...r, fair: { ...r.fair, events: undefined } }) : null;
+  const byBuy = [...new Set(grid.map(g => g.buy))].map(b => ({ buy: b, r: strip(CORE.rankFinder(list.filter(r => r.buy === b && (target ? r.retire === target : true)), goal)[0] || null) }));
+  FINDER.res = { goal, ranked: ranked.slice(0, 6), byYear, byBuy, noHouse: strip(noHouse), price: e.priceEur };
+  FINDER.sig = finderSig(); FINDER.running = false; saveFinder();
+  // Beim ersten Öffnen: Empfehlung direkt als Plan setzen (statt mit einem roten Beispiel zu starten)
+  if (FRESH && FINDER.res.ranked[0]) { FRESH = false; applyFinder('ranked:0', true); }
+  renderFinder(); renderCompare();
+  if (FINDER.queued) { FINDER.queued = false; maybeAutoRun(); }
+}
+
+function applyFinder(ref, silent = false) {
+  const [kind, i] = ref.split(':'), R = FINDER.res; if (!R) return;
+  const r = kind === 'ranked' ? R.ranked[+i] : kind === 'byYear' ? R.byYear[+i] : null; if (!r) return;
+  if (!silent) S.prevPlan = { purchaseYear: S.purchaseYear, btcMaxSell: S.btcMaxSell, finMode: S.finMode, tankMode: S.tankMode, retireYear: S.retireYear, payoffYear: S.payoffYear, buyHouse: S.buyHouse, priceBasis: S.priceBasis };
+  if (r.noHouse) S.buyHouse = false;
+  else Object.assign(S, { buyHouse: true, purchaseYear: r.buy, priceBasis: 'heute', finMode: 'maxSell', btcMaxSell: r.sell });
+  Object.assign(S, { tankMode: r.tank, retireYear: r.retire, payoffYear: r.retire, fromFinder: true });
+  save(); renderLevers(); renderFields(); recalc();
+  if (!silent) document.getElementById('secPlan').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+function undoPlan() {
+  if (!S.prevPlan) return;
+  Object.assign(S, S.prevPlan); S.prevPlan = null; S.fromFinder = false;
+  save(); renderLevers(); renderFields(); recalc();
+}
+
+// ---------- Darstellung: Automatisch / Hell / Dunkel ----------
+const THEME_L = { auto: 'Automatisch', light: 'Hell', dark: 'Dunkel' };
+const THEME_I = { auto: '◐', light: '☀︎', dark: '☾' };
+// Im claude.ai-Link kann die Umgebung selbst ein Farbschema vorgeben – bei „Automatisch“ bleibt das erhalten
+const HOST_THEME = S.theme === 'auto' ? document.documentElement.dataset.theme : undefined;
+function applyTheme() {
+  const root = document.documentElement;
+  if (S.theme === 'light' || S.theme === 'dark') root.dataset.theme = S.theme;
+  else if (HOST_THEME) root.dataset.theme = HOST_THEME; else delete root.dataset.theme;
+  // Browser-/Statusleiste (iPhone) passend einfärben
+  const dark = S.theme === 'dark' || (S.theme !== 'light' && window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches);
+  document.querySelectorAll('meta[name="theme-color"]').forEach(m => { m.setAttribute('content', dark ? '#131417' : '#f5f4ef'); if (S.theme !== 'auto') m.removeAttribute('media'); });
+  root.style.colorScheme = S.theme === 'auto' ? 'light dark' : S.theme;
+}
+try { matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if (S.theme === 'auto') { applyTheme(); recalc(); } }); } catch (e) {}
+
+function buildAll() { applyTheme(); renderLage(); renderLevers(); buildSteps(); renderFinder(); recalc(); }
+buildAll();
+fetchLive().finally(() => maybeAutoRun(true));
+// Als App installierbar und offline nutzbar (nur auf einer Webseite, nicht als lokale Datei)
+if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) navigator.serviceWorker.register('sw.js').catch(() => {});
+let rsT; window.addEventListener('resize', () => { clearTimeout(rsT); rsT = setTimeout(schedule, 150); });
+try {
+  const mini = document.getElementById('mini');
+  new IntersectionObserver(([en]) => mini.classList.toggle('show', !en.isIntersecting && window.scrollY > 200)).observe(document.getElementById('verdict'));
+  document.getElementById('miniTop').onclick = () => document.getElementById('secPlan').scrollIntoView({ behavior: 'smooth' });
+} catch (e) {}
+</script>
+</body>
+</html>
