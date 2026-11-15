@@ -456,6 +456,7 @@ const CORE = (() => {
     const payoffYear = Math.max(opt.payoffYear ?? inp.payoffYear, pY + 1);
     const tankLead = inp.tankMode === 'top' ? (inp.tankLead || 2) : 0;
     let tankDone = false;
+    let preDone = false, preBtc = 0, preCash = 0; // Eigenkapital vorab im Verkaufsfenster gesichert
 
     let btc = inp.btc, cash = inp.otherAssets, topf1 = 0, houseVal = 0;
     let loans = []; // Teildarlehen: { name, flex, bal, orig, rate, follow, pmt, start, fixEnd, followed }
@@ -552,7 +553,8 @@ const CORE = (() => {
         if (w.mid < t0 || w.mid >= t1 || w.mid <= after + 1e-9) return null;
         let ps = 0; for (let m = 0; m < 5; m++) ps += path(w.start + m / 12).price;
         const fvm = path(w.mid).fv;
-        return ps / 5 < fvm * (inp.windowGuard ?? 0.75) ? null : { t: w.mid, price: ps / 5, fv: fvm };
+        // kleine Toleranz: liegt der Kurs genau auf der Sicherung, wird verkauft (sonst entscheidet Rundung)
+        return ps / 5 < fvm * (inp.windowGuard ?? 0.75) * 0.999 ? null : { t: w.mid, price: ps / 5, fv: fvm };
       };
       // Kombiniert: in den 12 Monaten vor einem Fenster wartet die Kursregel auf das Fenster (dort lag das Hoch bisher)
       const waitForWindow = t => { if (sellRule !== 'both') return false; const w = sellWindow(t); return t >= w.start - 1 && t < w.start; };
@@ -562,17 +564,32 @@ const CORE = (() => {
         return a && b ? (a.t <= b.t ? a : b) : a || b;
       };
 
+      // 0. Eigenkapital vorab sichern: Liegt ein Verkaufsfenster in den 2 Jahren vor dem Kauf, werden die
+      //    für den Kauf vorgesehenen Bitcoin dort verkauft und bis zum Kauf auf Tagesgeld geparkt.
+      if (inp.buyHouse && inp.finMode === 'maxSell' && sellRule !== 'signal' && !preDone && y <= pY) {
+        const w = sellWindow(t0);
+        if (w.mid >= t0 && w.mid < t1 && w.mid < pT && pT - w.mid <= 2) {
+          const h = windowHit(-Infinity);
+          if (h) {
+            const b0 = btc, got = sellBtc(Math.min(inp.btcMaxSell, btc) * h.price, h.t, h.price);
+            preBtc = b0 - btc; preCash = got; cash += got; preDone = true;
+            ev(`Eigenkapital im Verkaufsfenster gesichert: ${fBtc(preBtc)} zu ${fEurS(h.price)} = ${fEurS(got)}, bis zum Kauf auf Tagesgeld`, 'house', h.t);
+          }
+        }
+      }
+
       // 1. Hauskauf (zum Quartalsbeginn pT)
       if (inp.buyHouse && y === pY) {
         const { price, fv } = path(pT), tm = pT;
         const hp = inp.priceBasis === 'heute' ? inp.housePrice * Math.pow(1 + inp.houseGrowth / 100, pT - env.nowYear) : inp.housePrice;
         const nk = nebenkosten(hp, inp), total = hp + nk.sum + inp.renovation;
-        const cashAvail = inp.useCash ? Math.max(0, cash) : 0;
+        // vorab gesichertes Eigenkapital zählt immer, übriges Erspartes nur mit „Erspartes als Eigenkapital“
+        const cashAvail = inp.useCash ? Math.max(0, cash) : Math.max(0, Math.min(cash, preCash));
         let loanAmt, eqBtc;
         if (inp.finMode === 'maxSell') {
-          // höchstens btcMaxSell BTC abgeben, Rest = Kredit (passt sich dem Hauspreis an)
+          // höchstens btcMaxSell BTC abgeben (inkl. vorab verkaufter), Rest = Kredit (passt sich dem Hauspreis an)
           const cashUse = Math.min(cashAvail, total);
-          eqBtc = Math.min(Math.min(inp.btcMaxSell, btc) * price, total - cashUse);
+          eqBtc = Math.min(Math.max(0, Math.min(inp.btcMaxSell - preBtc, btc)) * price, total - cashUse);
           loanAmt = Math.max(0, total - cashUse - eqBtc);
         } else if (inp.finMode === 'keep') {
           const sellable = Math.max(0, btc - inp.btcKeep) * price;
@@ -602,10 +619,11 @@ const CORE = (() => {
         // Bank: Rate höchstens bankMaxPct % des Haushaltsnettos, und nur mit Erwerbseinkommen
         const bankMax = inp.netIncome * (inp.bankMaxPct || 40) / 100;
         if (loanAmt > 0 && (pmtSum > bankMax + 1 || pT >= retireYear)) R.bankFail = pT >= retireYear ? 'retired' : pmtSum;
-        R.purchase = { y, t: pT, price, fv, hp, nk, total, loanAmt, btcSold: b0 - btc, btcAfter: btc, cashUsed, bankMax,
+        R.purchase = { y, t: pT, price, fv, hp, nk, total, loanAmt, btcSold: b0 - btc, btcAfter: btc, cashUsed, bankMax, preBtc, preCash: Math.min(preCash, cashUsed),
           rate: loanAmt > 0 ? loans.reduce((s, l) => s + l.rate * l.orig, 0) / loanAmt : 0, pmt: pmtSum, ltv: loanAmt / hp,
           parts: loans.map(l => ({ name: l.name, flex: l.flex, amt: l.orig, rate: l.rate, pmt: l.pmt })) };
-        ev(`Hauskauf ${fEurS(hp)}: ${fBtc(b0 - btc)} verkauft (Kurs ${fEurS(price)}), Kredit ${fEurS(loanAmt)}`, 'house', pT);
+        ev(`Hauskauf ${fEurS(hp)}: ${preBtc > 0 ? `${fEurS(R.purchase.preCash)} vorab gesichertes Eigenkapital${b0 - btc > 1e-6 ? ` + ${fBtc(b0 - btc)} verkauft (Kurs ${fEurS(price)})` : ''}` : `${fBtc(b0 - btc)} verkauft (Kurs ${fEurS(price)})`}, Kredit ${fEurS(loanAmt)}`, 'house', pT);
+        preCash = 0;
         if (R.shortfallHouse > 0) ev(`BTC reichen nicht – ${fEurS(R.shortfallHouse)} fehlen`, 'warn');
       }
 
@@ -686,6 +704,7 @@ const CORE = (() => {
           if (cash < -1 && R.failYear == null) { R.failYear = y; ev('Kein Geld mehr für Rate/Ausgaben', 'fail'); }
         }
         if (cash > 0) cash *= 1 + inp.cashRate / 100 * (1 - ABGELT) * frac;
+        if (preCash > 0 && !(houseVal > 0)) preCash *= 1 + inp.cashRate / 100 * (1 - ABGELT) * frac; // geparktes Eigenkapital verzinst sich mit
         if (topf1 > 0) { // vorab gefüllter Tank arbeitet schon
           const g = topf1 * inp.topf1Return / 100 * frac, taxable = g * (inp.topf1Equity / 100 * 0.7 + (1 - inp.topf1Equity / 100));
           const tax = Math.max(0, taxable - PAUSCH) * ABGELT; topf1 += g - tax; R.taxPaid += tax;
@@ -807,7 +826,9 @@ const CORE = (() => {
     const tie = (a, b) => b.worst60 - a.worst60 || b.fair.btcRetire - a.fair.btcRetire;
     ok.sort(goal === 'target' ? (a, b) => b.greens - a.greens || tie(a, b)
       : (a, b) => a.retire - b.retire || b.greens - a.greens || tie(a, b));
-    return ok;
+    // gleiche Pläne (Kauf, Einsatz, Rente), die sich nur im Tank-Zeitpunkt unterscheiden, nur einmal zeigen
+    const seen = new Set();
+    return ok.filter(r => { const k = `${r.noHouse ? 'x' : r.buy}|${r.sell}|${r.retire}`; if (seen.has(k)) return false; seen.add(k); return true; });
   }
 
   // Eigenen Plan mit denselben Maßstäben bewerten wie der Finder (für den Vergleich „Mein Plan ↔ Empfehlung“)
@@ -1553,7 +1574,7 @@ function indicators() {
 const fMonth = t => { const y = Math.floor(t + 1e-9), m = Math.min(11, Math.floor((t - y) * 12 + 1e-6)); return new Date(Date.UTC(y, m, 1)).toLocaleDateString('de-DE', { month: 'short', year: 'numeric' }).replace('.', ''); };
 function sellState(ind) {
   const now = ENV.nowYear, w = CORE.sellWindow(now), rule = S.sellRule || 'both';
-  const inWin = now >= w.start && now < w.end, guard = S.windowGuard ?? 0.75;
+  const inWin = now >= w.start && now < w.end + 1 / 12, guard = S.windowGuard ?? 0.75; // 5 Tranchen: Start … Start + 4 Monate (einschließlich)
   const byWin = rule !== 'signal' && inWin && ind.pl >= guard, byPrice = rule !== 'window' && ind.pl >= S.sellRatio;
   const tranche = inWin ? Math.min(5, Math.floor((now - w.start) * 12) + 1) : 0;
   return { w, inWin, act: byWin || byPrice, byWin, byPrice, tranche, guard, rule };
@@ -1565,7 +1586,7 @@ function nextSteps(st, zone) {
   const how = st.byWin ? `diesen Monat Tranche ${st.tranche} von 5` : 'jetzt';
   if (S.buyHouse && !bought) {
     const months = Math.round((S.purchaseYear - now) * 12);
-    if (act && months <= 24) out.push(`<b>Eigenkapital sichern:</b> Bitcoin für den Hauskauf (${fBtc(p ? p.btcSold : S.btcMaxSell)}) ${how} verkaufen und bis zum Kauf ${fQ(S.purchaseYear)} auf Tagesgeld parken.`);
+    if (act && months <= 24) out.push(`<b>Eigenkapital sichern:</b> die für den Hauskauf vorgesehenen ${fBtc(S.finMode === 'maxSell' ? S.btcMaxSell : (p ? p.btcSold + (p.preBtc || 0) : 0))} ${how} verkaufen und bis zum Kauf ${fQ(S.purchaseYear)} auf Tagesgeld parken.`);
     else out.push(`<b>Halten.</b> Hauskauf geplant für ${fQ(S.purchaseYear)} (in ${months} Monaten).`);
     if (months <= 12) out.push('<b>Unterlagen:</b> Herkunftsnachweis und Finanzierung vorbereiten (siehe Checkliste).');
   }
