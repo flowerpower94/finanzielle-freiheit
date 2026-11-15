@@ -199,6 +199,7 @@ button.danger{background:var(--red-bg);border-color:var(--red);color:var(--ink)}
 .glab{display:grid;grid-template-columns:15% 60% 25%;font-size:11.5px;color:var(--muted)}
 .glab span:nth-child(2){text-align:center} .glab span:last-child{text-align:right}
 ul.steps{margin:12px 0 0;padding-left:18px;font-size:14px}
+.lagebild{margin-top:14px;padding-top:10px;border-top:1px solid var(--line)}
 ul.steps li{margin:4px 0}
 .inds{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:10px 0}
 .inds>div{background:var(--soft);border-radius:10px;padding:9px 10px;display:flex;flex-direction:column;gap:3px}
@@ -406,6 +407,13 @@ const CORE = (() => {
   }
   function scenarioMult(inp, scen) { return scen === 'sup' ? inp.supMult : scen === 'res' ? inp.resMult : inp.fairMult; }
 
+  // Verkaufsfenster: 15–19 Monate nach dem Halving, verteilt in Monatstranchen.
+  // Rückblick: Ø 51 % (2017), 78 % (2021), 88 % (2025) des Zyklus-Hochs – robuster als jedes Kurs-Signal.
+  // Halvings: 28.11.2012, 09.07.2016, 11.05.2020, 20.04.2024; danach alle ≈ 3,996 Jahre (Blockzeit knapp unter 10 Min.).
+  const HALVING0 = 2024.30, HALVING_P = 3.996, WIN_FROM = 15 / 12, WIN_TO = 19 / 12;
+  function halvingFor(y) { return HALVING0 + Math.ceil((y - HALVING0 - WIN_TO) / HALVING_P - 1e-9) * HALVING_P; } // Halving, dessen Fenster bei y läuft oder als Nächstes kommt
+  function sellWindow(y) { const h = halvingFor(y); return { halving: h, start: h + WIN_FROM, end: h + WIN_TO, mid: (h + WIN_FROM + h + WIN_TO) / 2 }; }
+
   // 4-Jahres-Zyklus (Halving-Rhythmus): vom Allzeithoch cycleFall Jahre fallend ins Tief, dann steigend bis zum nächsten Hoch
   const CYCLE_P = 4;
   function cyclePhase(inp, y) {
@@ -457,7 +465,9 @@ const CORE = (() => {
     let tr = [{ t: (isFinite(tf) ? msToYear(tf) : env.nowYear) - 1, btc, cost: inp.btcCost || 0 }];
     const taxAllFrom = opt.taxAllFrom || Infinity; // Stresstest: Steuerfreiheit nach 1 Jahr fällt weg
     let yearTaxAll = 0;
-    const trig = (inp.sellRatio || 1) * 0.999; // Verkaufsschwelle: Kurs ≥ sellRatio × Fair Value
+    const trig = (inp.sellRatio || 1) * 0.999; // Verkaufsschwelle: Kurs ≥ sellRatio × Fair Value (nur bei Regel „Signal“)
+    const sellRule = inp.sellRule || 'both'; // 'both' (Fenster oder Kurs), 'window', 'signal'
+    const hitLabel = h => Math.abs(sellWindow(h.t).mid - h.t) < 1e-6 ? 'im Verkaufsfenster' : 'im Hoch';
 
     const R = { scen, fix, strat, rows: [], events: [], warn: [], purchase: null, payoff: null, retire: null,
       interest: 0, vfe: 0, btcSoldLoan: 0, forced: 0, forcedBelowFv: 0, failYear: null, taxPaid: 0,
@@ -532,8 +542,25 @@ const CORE = (() => {
       const retired = y >= retireYear;
       const age = y - inp.birthYear;
       let flow = 0, annualExp = 0;
-      // erstes Quartal des Jahres, in dem Kurs ≥ thr × Fair Value
-      const firstHit = (thr, after = -Infinity) => { for (let q = 0; q < 4; q++) { const t = t0 + q * frac / 4; if (t <= after + 1e-9) continue; const s = path(t); if (s.price >= s.fv * thr) return { t, price: s.price, fv: s.fv }; } return null; };
+      // Wann wird in diesem Jahr verkauft?
+      // „Fenster“: Fenstermitte (15–19 Monate nach dem Halving) zum Ø-Kurs der 5 Monatstranchen,
+      //   außer Bitcoin steht dort unter windowGuard × Trendwert (kein Ausverkauf im Tief);
+      // „Kurs“: im ersten Quartal mit Kurs ≥ Schwelle × Trendwert;
+      // „Kombiniert“: was zuerst eintritt – Fenster greift, solange der Halving-Rhythmus hält, die Kursregel, falls nicht.
+      const windowHit = after => {
+        const w = sellWindow(t0);
+        if (w.mid < t0 || w.mid >= t1 || w.mid <= after + 1e-9) return null;
+        let ps = 0; for (let m = 0; m < 5; m++) ps += path(w.start + m / 12).price;
+        const fvm = path(w.mid).fv;
+        return ps / 5 < fvm * (inp.windowGuard ?? 0.75) ? null : { t: w.mid, price: ps / 5, fv: fvm };
+      };
+      // Kombiniert: in den 12 Monaten vor einem Fenster wartet die Kursregel auf das Fenster (dort lag das Hoch bisher)
+      const waitForWindow = t => { if (sellRule !== 'both') return false; const w = sellWindow(t); return t >= w.start - 1 && t < w.start; };
+      const priceHit = (thr, after) => { for (let q = 0; q < 4; q++) { const t = t0 + q * frac / 4; if (t <= after + 1e-9 || waitForWindow(t)) continue; const s = path(t); if (s.price >= s.fv * thr) return { t, price: s.price, fv: s.fv }; } return null; };
+      const firstHit = (thr, after = -Infinity) => {
+        const a = sellRule !== 'signal' ? windowHit(after) : null, b = sellRule !== 'window' ? priceHit(thr, after) : null;
+        return a && b ? (a.t <= b.t ? a : b) : a || b;
+      };
 
       // 1. Hauskauf (zum Quartalsbeginn pT)
       if (inp.buyHouse && y === pY) {
@@ -611,7 +638,7 @@ const CORE = (() => {
           const b0 = btc;
           topf1 += sellBtc(Math.min(Math.max(0, inp.topf1Target - topf1), btc * h.price), h.t, h.price);
           tankDone = true; R.tankEarlyBtc = b0 - btc;
-          ev(`Sicherheitstank im Hoch vorab gefüllt: ${fEurS(topf1)} (${fBtc(b0 - btc)} zu ${fEurS(h.price)})`, 'retire', h.t);
+          ev(`Sicherheitstank ${hitLabel(h)} vorab gefüllt: ${fEurS(topf1)} (${fBtc(b0 - btc)} zu ${fEurS(h.price)})`, 'retire', h.t);
         }
       }
       // 4b. Rentenstart: Sicherheitstank (rest-)füllen
@@ -676,7 +703,7 @@ const CORE = (() => {
         const rh = topf1 < inp.refillTo * ye - 1 && btc > 1e-8 ? firstHit(trig) : null;
         if (rh) {
           const got = sellBtc(Math.min(inp.refillTo * ye - topf1, btc * rh.price), rh.t, rh.price);
-          if (got > 1) { topf1 += got; ev(`Sicherheitstank im Hoch aufgefüllt (+${fEurS(got)}, Kurs ${fEurS(rh.price)})`, 'refill', rh.t); }
+          if (got > 1) { topf1 += got; ev(`Sicherheitstank ${hitLabel(rh)} aufgefüllt (+${fEurS(got)}, Kurs ${fEurS(rh.price)})`, 'refill', rh.t); }
         }
         if (topf1 < 0) {
           const got = sellBtc(Math.min(-topf1 + ye, btc * price), tm, price);
@@ -875,7 +902,7 @@ const CORE = (() => {
   const PL_SANTO = { A: 1.0117e-17, n: 5.82 };
 
   return { yearToMs, msToYear, daysSinceGenesis, plUsd, plGrowth, nebenkosten, ltvAdj, estimateRate, loanRateFor,
-    pricePath, scenarioMult, cycleFactor, cycleLabel, PL_FIT, PL_SANTO, WORLDS, finderGrid, evalCombo, rankFinder, evalPlan, monteCarlo, signalScore, SIG, KINDERGELD, simulate, compareStrategies, earliestRetire, stressTests, fEur, fEurS, fBtc, fPct };
+    pricePath, scenarioMult, cycleFactor, cycleLabel, PL_FIT, PL_SANTO, WORLDS, finderGrid, evalCombo, rankFinder, evalPlan, monteCarlo, signalScore, SIG, KINDERGELD, sellWindow, halvingFor, simulate, compareStrategies, earliestRetire, stressTests, fEur, fEurS, fBtc, fPct };
 })();
 // ===== CORE-END =====
 </script>
@@ -894,7 +921,7 @@ const DEFAULTS = {
   birthYear: 1990, kid1: 0, kid2: 0, ageEnd: 90,
   btc: 2.0, otherAssets: 20000, netIncome: 5000, expenses: 3500, dca: 0, taxFreeFrom: '',
   btcManual: 0, plModel: 'santo', plA: 1.0117e-17, plN: 5.82,
-  supMult: 0.5, fairMult: 0.75, resMult: 1.0, cycleOn: true, cycleAmp: 0.55, cyclePeak: 2025.77, cycleFall: 0.75, convYears: 2, haircut: 0, sellRatio: 1.2,
+  supMult: 0.5, fairMult: 0.75, resMult: 1.0, cycleOn: true, cycleAmp: 0.55, cyclePeak: 2025.77, cycleFall: 0.75, convYears: 2, haircut: 0, sellRatio: 1.2, sellRule: 'both', windowGuard: 0.75,
   buyHouse: true, priceBasis: 'heute', housePrice: 600000, houseGrowth: 2, purchaseYear: 2030.5, rent: 1100, minWorkAfterBuy: 1,
   grest: 5.0, notar: 2.0, makler: true, maklerPct: 3.57, renovation: 0,
   finMode: 'maxSell', btcMaxSell: 1.0, loan: 300000, btcKeep: 1.8, useCash: true,
@@ -976,16 +1003,17 @@ const KK = () => S.realView ? 'in heutiger Kaufkraft' : 'nominal';
 const SCEN = { sup: ['Schlecht', 'supMult'], fair: ['Normal', 'fairMult'], res: ['Gut', 'resMult'] };
 const scenSub = k => `${nf(S[SCEN[k][1]])} × Trendwert`;
 const W_SHORT = { sup: 'Schlecht', fair: 'Normal', flat: 'Ohne Zyklus' };
-const STRAT = { top: 'Im Bitcoin-Hoch tilgen', fixed: 'Zu festem Termin mit Bitcoin ablösen', salary: 'Nur die normale Rate zahlen' };
-const STRAT_S = { top: 'Im Hoch tilgen', fixed: 'Fester Termin', opp: 'Laufend im Hoch', salary: 'Nur Rate' };
-const TANK_S = { top: 'im Hoch davor', retire: 'zum Rentenstart' };
+const STRAT = { top: 'Im Verkaufsfenster tilgen', fixed: 'Zu festem Termin mit Bitcoin ablösen', salary: 'Nur die normale Rate zahlen' };
+const STRAT_S = { top: 'Im Fenster tilgen', fixed: 'Fester Termin', opp: 'Laufend im Hoch', salary: 'Nur Rate' };
+const TANK_S = { top: 'im Verkaufsfenster davor', retire: 'zum Rentenstart' };
 const WORD = (R) => R.status === 'green' ? 'machbar' : R.status === 'red' ? 'so nicht machbar' : R.sev >= 2 ? 'knapp machbar' : 'machbar – mit Engpass vor der Rente';
 const help = t => `<button class="q" type="button" data-help="${t.replace(/"/g, '&quot;')}" aria-label="Erklärung">?</button>`;
 const GLOSS = {
   trend: 'Trendwert: der langfristige Bitcoin-Trend laut Power-Law-Modell („Fair Value“). Bitcoin lag seit 2022 meist darunter – typisch bei 0,75 × Trendwert.',
   zyklus: '4-Jahres-Zyklus: Bisher gab es etwa alle 4 Jahre ein Hoch (ca. 18 Monate nach dem Halving) und rund 9 Monate danach ein Tief. Nächste Hochs im Modell: ca. Q4 2029, Q4 2033, Q4 2037.',
-  tank: 'Sicherheitstank: ETFs/Festgeld, aus denen Sie in der Rente leben. So müssen Sie Bitcoin nicht im Tief verkaufen. Er wird in Bitcoin-Hochs aufgefüllt.',
+  tank: 'Sicherheitstank: ETFs/Festgeld, aus denen Sie in der Rente leben. So müssen Sie Bitcoin nicht im Tief verkaufen. Er wird im Verkaufsfenster nach dem Halving (oder ab 1,2 × Trendwert) wieder aufgefüllt.',
   schwelle: 'Verkaufsschwelle: Bitcoin werden nur verkauft (Kredit tilgen, Tank füllen), wenn der Kurs mindestens so hoch ist – gemessen am Trendwert. 1,2 × ≈ ein typisches Zyklus-Hoch.',
+  fenster: 'Verkaufsregel: Geplante Verkäufe (Eigenkapital, variabler Kredit, Sicherheitstank) werden auf die Monate 15–19 nach dem Halving verteilt – dort lagen die letzten Hochs (Rückblick: Ø 51 %, 78 %, 88 % des Höchstkurses). Steht Bitcoin im Fenster unter 0,75 × Trendwert, wird nicht verkauft. Zusätzlich wird jederzeit verkauft, wenn Bitcoin über 1,2 × Trendwert steigt – falls der Halving-Rhythmus einmal ausbleibt.',
   vfe: 'Vorfälligkeitsentschädigung: Gebühr der Bank, wenn Sie einen Kredit mit fester Zinsbindung vorzeitig ganz zurückzahlen. Nach 10 Jahren fällt sie weg (§ 489 BGB).',
   split: 'Kredit aufteilen: Den Teil, den Ihr Gehalt trägt, mit festem Zins; den Rest variabel – der lässt sich im Bitcoin-Hoch jederzeit ohne Gebühr ablösen.',
   kaufkraft: 'Heutige Kaufkraft: Zukünftige Euro-Beträge werden um die Inflation bereinigt. 1 Mio. € im Jahr 2054 entsprechen bei 2 % Inflation heute nur ca. 0,57 Mio. €.',
@@ -1016,7 +1044,9 @@ const CARDS = [
     ex: `Langfristig folgt Bitcoin bisher einem Trend, dem <b>Trendwert</b> ${help(GLOSS.trend)}. Die drei Fälle <b>Schlecht / Normal / Gut</b> rechnen mit 0,5 / 0,75 / 1,0 × Trendwert, dazu mit dem <b>4-Jahres-Zyklus</b> ${help(GLOSS.zyklus)}. Grundlage sind die echten Kurse seit 2010.`,
     fields: [
       { k: 'cycleOn', l: '4-Jahres-Zyklus einrechnen', t: 'chk' },
-      { k: 'sellRatio', l: 'Bitcoin nur verkaufen ab', u: '× Trendwert', s: 0.05, h: '1,2 × ≈ typisches Zyklus-Hoch (2024: 1,28 ×)' },
+      { k: 'sellRule', l: 'Wann Bitcoin verkauft werden', t: 'sel', o: [['both', 'Im Fenster nach dem Halving oder ab Kursschwelle (empfohlen)'], ['window', 'Nur im Fenster nach dem Halving'], ['signal', 'Nur ab Kursschwelle']] },
+      { k: 'sellRatio', l: 'Kursschwelle', u: '× Trendwert', s: 0.05, show: () => S.sellRule !== 'window', h: '1,2 × ≈ typisches Zyklus-Hoch (2024: 1,28 ×)' },
+      { k: 'windowGuard', l: 'Im Fenster nicht verkaufen unter', u: '× Trendwert', s: 0.05, x: 1, show: () => S.sellRule !== 'signal', h: 'Schutz, falls das Fenster einmal in ein Tief fällt' },
       { k: 'btcManual', l: 'Aktueller Bitcoin-Kurs', u: '€', s: 100, h: '0 = automatisch (live, sonst Stand 14.11.2026)' },
       { k: 'plModel', l: 'Trend-Formel', t: 'sel', x: 1, o: [['santo', 'Santostasi (n = 5,82)'], ['fit', 'Eigene Auswertung 2010–2026 (n = 5,59)'], ['custom', 'eigene Werte']] },
       { k: 'plA', l: 'Faktor A', s: 'any', x: 1, show: () => S.plModel === 'custom' },
@@ -1063,7 +1093,7 @@ const CARDS = [
       { k: 'minWorkAfterBuy', l: 'Nach dem Kauf noch arbeiten', u: 'Jahre', s: 0.5, x: 1, h: 'für die Strategie-Suche' },
     ], out: outHouseLoan },
   { id: 'd3', t: 'Rente & Sicherheitstank', sub: () => { const r = MAIN_RUN && MAIN_RUN.retire; return r ? `Tank ${fR(r.topf1, r.y)} · ${fBtc(r.btcAfter)} Bitcoin-Reserve` : ''; },
-    ex: `In der Rente leben Sie aus dem <b>Sicherheitstank</b> ${help(GLOSS.tank)}. Die übrigen Bitcoin bleiben als Reserve und werden nur in Hochs verkauft. Alle Ausgaben steigen mit der Inflation.`,
+    ex: `In der Rente leben Sie aus dem <b>Sicherheitstank</b> ${help(GLOSS.tank)}. Die übrigen Bitcoin bleiben als Reserve und werden nur im Verkaufsfenster verkauft. Alle Ausgaben steigen mit der Inflation.`,
     fields: [
       { k: 'kv', l: 'Krankenversicherung', u: '€/Monat', s: 10, h: 'freiwillig gesetzlich ca. 280–1.200 € – mit der Kasse klären' },
       { k: 'topf1Target', l: 'Sicherheitstank', u: '€', s: 10000 },
@@ -1080,7 +1110,7 @@ const CARDS = [
       { k: 'inflation', l: 'Inflation', u: '% p. a.', s: 0.1, x: 1 },
       { k: 'maintPct', l: 'Instandhaltung Haus', u: '% vom Wert', s: 0.1, x: 1 },
       { k: 'kidsMonthly', l: 'Extra pro Kind bis 18', u: '€/Monat', s: 50, x: 1 },
-      { k: 'tankMode', l: 'Tank füllen', t: 'sel', x: 1, o: [['top', 'im Bitcoin-Hoch davor'], ['retire', 'zum Rentenstart']] },
+      { k: 'tankMode', l: 'Tank füllen', t: 'sel', x: 1, o: [['top', 'im Verkaufsfenster davor'], ['retire', 'zum Rentenstart']] },
       { k: 'tankLead', l: 'Hoch suchen bis zu … vorher', u: 'Jahre', s: 1, x: 1, show: () => S.tankMode === 'top' },
       { k: 'topf1Return', l: 'Rendite Tank', u: '% p. a.', s: 0.1, x: 1 },
       { k: 'topf1Equity', l: 'Aktien-ETF-Anteil im Tank', u: '%', s: 5, x: 1 },
@@ -1345,7 +1375,7 @@ function outHouseLoan() {
   if (MAIN_RUN.payoff || MAIN_RUN.events.some(ev => /Sondertilgung/.test(ev.txt))) {
     const evs = MAIN_RUN.events.filter(ev => ev.type === 'loan' && /abgelöst|Sondertilgung/.test(ev.txt)).slice(0, 4);
     h += `<p class="note"><b>Tilgung (Fall „${SCEN[S.scenario][0]}“):</b> ${evs.map(ev => `${ev.t != null ? fQ(ev.t) : ev.y}: ${ev.txt}`).join(' · ')}</p>`;
-  } else if (S.strategy === 'top') h += `<div class="warn">Im Fall „${SCEN[S.scenario][0]}“ erreicht Bitcoin nie die Verkaufsschwelle (${nf(S.sellRatio)} × Trendwert) – der Kredit wird nur mit der normalen Rate getilgt.</div>`;
+  } else if (S.strategy === 'top') h += `<div class="warn">Im Fall „${SCEN[S.scenario][0]}“ gibt es bis zum Planende keinen Verkaufszeitpunkt (Fenster über ${nf(S.windowGuard ?? 0.75)} × bzw. Kurs über ${nf(S.sellRatio)} × Trendwert) – der Kredit wird nur mit der normalen Rate getilgt.</div>`;
   const annu = p.rate + S.tilgung / 100, maxLoan = Math.max(0, Math.min(surplus * 12, S.netIncome * S.bankMaxPct / 100 * 12) / annu);
   h += `<p class="note">Tragbar wäre ein Kredit bis ca. <b>${fEurS(maxLoan)}</b> (Überschuss nach Wegfall der Miete ${fEur(surplus)}/Monat, Bankgrenze ${S.bankMaxPct} % vom Netto).${S.splitOn && Math.abs(S.fixedPart - maxLoan) > 30000 ? ` Tipp: den festen Teil etwa auf diesen Betrag legen.` : ''}</p>`;
   // Kreditvarianten (Vergleich, ohne Empfehlung)
@@ -1432,7 +1462,7 @@ function outRetire() {
     </div>
     ${chart}
     ${legend([[css('--c-house'), 'Haus abzgl. Kredit'], [css('--c-tank'), 'Sicherheitstank + Erspartes'], [css('--c-btc'), 'Bitcoin']])}
-    <p class="note">Vermögen ${KK()}, Fall „${SCEN[S.scenario][0]}“, 20 Jahre ab Rentenstart. Der Tank wird in Bitcoin-Hochs (≥ ${nf(S.sellRatio)} × Trendwert) auf ${S.refillTo} Jahresausgaben aufgefüllt.</p>
+    <p class="note">Vermögen ${KK()}, Fall „${SCEN[S.scenario][0]}“, 20 Jahre ab Rentenstart. Der Tank wird im Verkaufsfenster nach dem Halving bzw. ab ${nf(S.sellRatio)} × Trendwert auf ${S.refillTo} Jahresausgaben aufgefüllt.</p>
     ${R.taxableSales.some(x => x.gain > 0) ? '<div class="warn">Achtung: Ein geplanter Bitcoin-Verkauf liegt vor Ablauf der 1-Jahres-Haltefrist (vorsichtig mit 40 % Steuer gerechnet).</div>' : ''}`;
 }
 
@@ -1519,34 +1549,54 @@ function indicators() {
   const usd = e.priceEur * e.usdPerEur;
   return { pl: e.priceEur / fvNow, mvrv: ENV.mvrv, mayer: ENV.ma200 ? usd / ENV.ma200 : null, fvNow };
 }
-function nextSteps(zone) {
-  const R = MAIN_RUN, now = ENV.nowYear, out = [], p = R.purchase;
+// Verkaufsregel heute: im Fenster nach dem Halving (Kurs ≥ Sicherung) oder jederzeit ab Kursschwelle
+const fMonth = t => { const y = Math.floor(t + 1e-9), m = Math.min(11, Math.floor((t - y) * 12 + 1e-6)); return new Date(Date.UTC(y, m, 1)).toLocaleDateString('de-DE', { month: 'short', year: 'numeric' }).replace('.', ''); };
+function sellState(ind) {
+  const now = ENV.nowYear, w = CORE.sellWindow(now), rule = S.sellRule || 'both';
+  const inWin = now >= w.start && now < w.end, guard = S.windowGuard ?? 0.75;
+  const byWin = rule !== 'signal' && inWin && ind.pl >= guard, byPrice = rule !== 'window' && ind.pl >= S.sellRatio;
+  const tranche = inWin ? Math.min(5, Math.floor((now - w.start) * 12) + 1) : 0;
+  return { w, inWin, act: byWin || byPrice, byWin, byPrice, tranche, guard, rule };
+}
+function nextSteps(st, zone) {
+  const R = MAIN_RUN, now = ENV.nowYear, out = [], p = R.purchase, act = st.act;
   const bought = S.buyHouse && now >= S.purchaseYear, retired = now >= S.retireYear;
   const flex = p && p.parts ? p.parts.find(x => x.flex) : null;
+  const how = st.byWin ? `diesen Monat Tranche ${st.tranche} von 5` : 'jetzt';
   if (S.buyHouse && !bought) {
     const months = Math.round((S.purchaseYear - now) * 12);
-    if (zone === 'sell' && months <= 24) out.push(`<b>Eigenkapital sichern:</b> Bitcoin für den Hauskauf (${fBtc(p ? p.btcSold : S.btcMaxSell)}) jetzt im Hoch verkaufen und bis zum Kauf ${fQ(S.purchaseYear)} auf Tagesgeld parken.`);
-    else out.push(`<b>Halten.</b> Hauskauf geplant für ${fQ(S.purchaseYear)} (in ${months} Monaten). ${zone === 'sell' ? '' : 'Verkauft wird erst in einer Verkaufszone.'}`);
+    if (act && months <= 24) out.push(`<b>Eigenkapital sichern:</b> Bitcoin für den Hauskauf (${fBtc(p ? p.btcSold : S.btcMaxSell)}) ${how} verkaufen und bis zum Kauf ${fQ(S.purchaseYear)} auf Tagesgeld parken.`);
+    else out.push(`<b>Halten.</b> Hauskauf geplant für ${fQ(S.purchaseYear)} (in ${months} Monaten).`);
     if (months <= 12) out.push('<b>Unterlagen:</b> Herkunftsnachweis und Finanzierung vorbereiten (siehe Checkliste).');
   }
-  if (bought && flex && zone === 'sell') out.push('<b>Variablen Kredit ablösen:</b> Bitcoin stehen im Hoch – der variable Teil lässt sich ohne Gebühr zurückzahlen.');
-  if (!retired && S.retireYear - now <= (S.tankLead || 2) && zone === 'sell') out.push(`<b>Sicherheitstank füllen:</b> Rentenstart ${S.retireYear} – jetzt im Hoch ${fEurS(S.topf1Target)} in ETFs/Festgeld umschichten.`);
-  if (retired) out.push(zone === 'sell' ? `<b>Tank auffüllen:</b> Sicherheitstank auf ${S.refillTo} Jahresausgaben bringen.` : '<b>Aus dem Tank leben</b> – keine Bitcoin verkaufen.');
-  if (!retired && zone === 'deep') out.push('<b>Tiefzone:</b> nichts verkaufen. Wer kann, kauft zu (Sparplan) – historisch lagen hier die Böden.');
+  if (bought && flex && act) out.push(`<b>Variablen Kredit ablösen:</b> ${how} – der variable Teil lässt sich ohne Gebühr zurückzahlen.`);
+  if (!retired && S.retireYear - now <= (S.tankLead || 2) && act) out.push(`<b>Sicherheitstank füllen:</b> Rentenstart ${S.retireYear} – ${how} in ETFs/Festgeld umschichten (Ziel ${fEurS(S.topf1Target)}).`);
+  if (retired) out.push(act ? `<b>Tank auffüllen:</b> ${how} – Sicherheitstank auf ${S.refillTo} Jahresausgaben bringen.` : '<b>Aus dem Tank leben</b> – keine Bitcoin verkaufen.');
+  if (!retired && zone === 'deep') out.push('<b>Marktlage tief:</b> nichts verkaufen. Wer kann, kauft zu (Sparplan) – historisch lagen hier die Böden.');
+  if (st.inWin && !act && st.rule !== 'signal') out.push(`<b>Fenster offen, aber Bitcoin steht unter ${nf(st.guard)} × Trendwert</b> – nichts verkaufen, um nicht im Tief zu verkaufen.`);
   if (!out.length) out.push(`<b>Halten.</b> Nächster geplanter Schritt: Rentenstart ${S.retireYear}.`);
+  out.hasSale = out.some(x => /Eigenkapital sichern|Kredit ablösen|Tank füllen|Tank auffüllen/.test(x));
   return out;
 }
 function renderToday() {
   const el = document.getElementById('secToday'); if (!el) return;
-  const ind = indicators(), sig = CORE.signalScore(ind), sc = Math.round(sig.score);
-  const Z = { sell: ['Verkaufszone', 'sell', 'Bitcoin steht historisch hoch – jetzt ist Zeit für geplante Verkäufe.'], hold: ['Halten', 'hold', 'Weder Hoch noch Tief – nichts verkaufen, was nicht geplant ist.'], deep: ['Tiefzone', 'deep', 'Bitcoin steht historisch niedrig – nicht verkaufen.'] }[sig.zone];
+  const ind = indicators(), sig = CORE.signalScore(ind), sc = Math.round(sig.score), st = sellState(ind);
+  const months = Math.max(0, Math.round((st.w.start - ENV.nowYear) * 12));
+  const steps = nextSteps(st, sig.zone), last = fMonth(st.w.start + 4 / 12); // 5 Monatstranchen
+  const why = st.byWin ? `Verkaufsfenster offen bis ${last}` : `Bitcoin steht über ${nf(S.sellRatio)} × Trendwert`;
+  const head = st.act && steps.hasSale ? ['Verkaufen nach Plan', 'sell', `${why} – ${st.byWin ? 'geplante Verkäufe auf 5 Monate verteilen' : 'geplante Verkäufe jetzt erledigen'}.`]
+    : st.act ? ['Halten', 'hold', `${why} – für Ihren Plan steht gerade kein Verkauf an.`]
+    : ['Halten', 'hold', st.rule === 'signal' ? `Verkauft wird erst ab ${nf(S.sellRatio)} × Trendwert (heute ${nf(ind.pl)} ×).`
+      : `Nächstes Verkaufsfenster: <b>${fMonth(st.w.start)} – ${last}</b>${months > 0 ? ` (in ${months} Monaten)` : ''}, 15–19 Monate nach dem Halving (ca. ${fMonth(st.w.halving)}).`];
+  const ZN = { sell: 'hoch', hold: 'mittel', deep: 'tief' }[sig.zone];
   const bar = (v) => `<span class="mini"><i style="width:${Math.max(3, Math.round(v ?? 0))}%"></i></span>`;
   el.innerHTML = `<div class="tdhead"><div><small>Heute · ${new Date().toLocaleDateString('de-DE', { day: '2-digit', month: 'long', year: 'numeric' })}</small>
-      <h2 class="zone ${Z[1]}">${Z[0]} <span class="sc">${sc}/100</span></h2><p class="lead">${Z[2]} ${help(GLOSS.signal)}</p></div></div>
+      <h2 class="zone ${head[1]}">${head[0]}</h2><p class="lead">${head[2]} ${help(GLOSS.fenster)}</p></div></div>
+    <ul class="steps">${steps.map(s => `<li>${s}</li>`).join('')}</ul>
+    <div class="lagebild"><small>Marktlage: <b>${ZN}</b> (${sc}/100) ${help(GLOSS.signal)}</small>
     <div class="gauge"><span class="g1"></span><span class="g2"></span><span class="g3"></span><i style="left:${Math.max(1, Math.min(99, sc))}%"></i></div>
-    <div class="glab"><span>Tief</span><span>Halten</span><span>Verkaufen</span></div>
-    <ul class="steps">${nextSteps(sig.zone).map(s => `<li>${s}</li>`).join('')}</ul>
-    <details class="more"><summary>Woraus sich das Signal zusammensetzt</summary>
+    <div class="glab"><span>tief</span><span>mittel</span><span>hoch</span></div></div>
+    <details class="more"><summary>Woraus sich die Marktlage zusammensetzt</summary>
       <div class="inds">
         <div><small>Trend (Kurs ÷ Trendwert)</small><b>${nf(ind.pl)} ×</b>${bar(sig.parts.pl)}<em>Tiefs 0,42 · letztes Hoch 1,25</em></div>
         <div><small>Einstandswert aller Anleger (MVRV)</small><b>${ind.mvrv ? nf(ind.mvrv) : '–'}</b>${bar(sig.parts.mvrv)}<em>Tiefs 0,76 · letztes Hoch 2,7</em></div>
