@@ -260,6 +260,7 @@ ol.road li.now ul.steps{margin-top:6px}
 .wres b{font-size:18px;font-variant-numeric:tabular-nums}
 .wres .wchips{margin:4px 0 0}
 .recline{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.recline small{flex:1 1 180px} .recline b.vd{font-size:13.5px;color:var(--ink)}
 #secAnswer h3.grp{margin-top:18px}
 dl.plist{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;margin:6px 0 0;font-size:14.5px}
 dl.plist dt{color:var(--muted);font-size:13px;padding-top:1px}
@@ -1794,11 +1795,34 @@ function buildWhat() {
 function renderWhatRes() {
   const el = document.getElementById('whatRes'); if (!el || !MYPLAN) return;
   const best = FINDER.res && FINDER.res.ranked[0], same = isRec(), cur = MC.res && MC.key === mcKey(S) ? MC.res.success : null;
+  const rec = MC.rec && MC.recKey === recKeyOf() ? MC.rec.success : null;
+  let cmp = '';
+  if (best && !same) {
+    // Was unterscheidet Ihre Variante von der Empfehlung?
+    const d = [], rate = CORE.wishRate(S, env());
+    if (S.retireYear !== best.retire) d.push(`Rente ${S.retireYear} statt ${best.retire}`);
+    if (!!best.noHouse !== !S.buyHouse) d.push(S.buyHouse ? 'mit Hauskauf' : 'ohne Hauskauf');
+    else if (S.buyHouse && Math.abs(S.purchaseYear - best.buy) > 0.01) d.push(`Kauf ${fQ(S.purchaseYear)} statt ${fQ(best.buy)}`);
+    if (S.buyHouse && !best.noHouse && S.finMode === 'rate' && Math.abs(rate - best.rate) >= 1) d.push(`Rate ${fEur(rate)} statt ${fEur(best.rate)}${rate > rateMaxEff() + 1 ? ' (über Ihrer Obergrenze)' : ''}`);
+    if (S.finMode !== 'rate' && S.buyHouse) d.push('andere Finanzierungsregel');
+    let verdict = '', btn = 'Zur Empfehlung';
+    if (cur != null && rec != null) {
+      const later = S.retireYear - best.retire;
+      if (cur > rec + 0.005) {
+        verdict = later > 0 ? `Ihre Variante ist sicherer, dafür ${later} Jahr${later > 1 ? 'e' : ''} später in Rente.`
+          : rate > rateMaxEff() + 1 ? 'Ihre Variante ist sicherer – mit einer Rate über Ihrer Obergrenze.'
+          : 'Ihre Variante ist sicherer als die Empfehlung.';
+        btn = 'Empfehlung übernehmen';
+      } else if (cur < rec - 0.005) verdict = later < 0 ? `Die Empfehlung ist sicherer; Ihre Variante geht ${-later} Jahr${later < -1 ? 'e' : ''} früher in Rente.` : 'Die Empfehlung ist sicherer.';
+      else verdict = 'Beide sind etwa gleich sicher.';
+    }
+    const better = cur != null && rec != null && cur > rec + 0.005;
+    cmp = `<div><small>Sicherheit: Ihre Variante → Empfehlung</small><b>${cur != null ? pct(cur) : '…'} → ${rec != null ? pct(rec) : '…'}</b></div>
+      <div class="recline"><small>${d.join(' · ') || 'kleine Abweichung'}${verdict ? `<br><b class="vd">${verdict}</b>` : ''}</small><button data-apply="ranked:0"${better ? '' : ' class="primary"'}>${btn}</button></div>`;
+  }
   el.innerHTML = `<div class="wres">
     <div><small>Sicher in allen drei Fällen? ${help(GLOSS.welten)}</small>${wchips(MYPLAN.status)}</div>
-    ${best && !same ? `<div><small>Sicherheit: Empfehlung → Ihre Variante</small><b>${MC.rec ? pct(MC.rec.success) : '…'} → ${cur != null ? pct(cur) : '…'}</b></div>
-      <div class="recline"><small>Empfehlung: Rente ${best.retire}${best.noHouse ? ' ohne Haus' : `, Haus ${fQ(best.buy)}, Rate ${best.rate > 0 ? fEur(best.rate) : '0 €'}`}</small><button data-apply="ranked:0">Zur Empfehlung</button></div>`
-      : best ? '<span class="good tag">= Empfehlung</span>' : ''}</div>`;
+    ${best && !same ? cmp : best ? '<span class="good tag">= Empfehlung</span>' : ''}</div>`;
 }
 const kvRates = () => { const m = rateMaxEff(); return [...new Set([0, 0.25, 0.5, 0.75, 1].map(f => Math.round(f * m / 50) * 50))]; };
 const kvKey = () => mcKey({ ...S, loanRate: 0 });
@@ -1903,7 +1927,7 @@ const MC_N = 400;
 const tick = () => new Promise(r => setTimeout(r, 0));
 function mcKey(inp) { const o = { ...inp }; ['scenario', 'realView', 'expert', 'theme', 'prevPlan', 'fromFinder', 'planBase', 'checkins', 'done', 'finderGoal', 'finderTarget', 'finderBuyFrom', 'finderBuyTo', 'lageOpen', '_v'].forEach(k => delete o[k]); return JSON.stringify(o) + '|' + Math.round(env().priceEur / 1000); }
 const planInp = r => ({ ...S, buyHouse: !r.noHouse, purchaseYear: r.buy ?? S.purchaseYear, priceBasis: 'heute', finMode: 'rate', loanRate: r.rate ?? 0, tankMode: r.tank, retireYear: r.retire, payoffYear: r.retire });
-const recKeyOf = () => { const b = FINDER.res && FINDER.res.ranked[0]; return mcKey(S) + '|' + (FINDER.sig || '') + (b ? `|${b.buy}|${b.rate}|${b.retire}|${b.tank}` : ''); };
+const recKeyOf = () => { const b = FINDER.res && FINDER.res.ranked[0]; return mcKey({ ...S, purchaseYear: 0, loanRate: 0, retireYear: 0, payoffYear: 0, tankMode: '', btcMaxSell: 0, finMode: '', buyHouse: 0 }) + '|' + (FINDER.sig || '') + (b ? `|${b.buy}|${b.rate}|${b.retire}|${b.tank}` : ''); };
 const byKeyOf = () => mcKey({ ...S, purchaseYear: 0, loanRate: 0, retireYear: 0, payoffYear: 0, tankMode: '' }) + '|' + (FINDER.sig || '');
 const needMC = () => MC.key !== mcKey(S) || MC.recKey !== recKeyOf() || (S.buyHouse && S.finMode === 'rate' && MC.kvKey !== kvKey()) || (FINDER.res && FINDER.res.byYear && FINDER.res.byYear.length > 0 && MC.byKey !== byKeyOf());
 function scheduleMC() {
@@ -1936,7 +1960,7 @@ async function runMCInner() {
   if (MC.recKey !== recKeyOf()) {
     const best = FINDER.res && FINDER.res.ranked[0], rk = recKeyOf();
     let rec = null;
-    if (best) { rec = isRec() ? MC.res : await mcAsync(planInp(best), e, MC_N, null, still); if (!rec) return void (MC.again = true); }
+    if (best) { rec = isRec() && MC.key === key ? MC.res : await mcAsync(planInp(best), e, MC_N, null, still); if (!rec) return void (MC.again = true); }
     MC.rec = rec; MC.recKey = rk; renderMCAll();
   }
   // Bitcoin oder Kredit: Sicherheit je Rate, mit denselben Zukünften
