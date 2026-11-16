@@ -435,7 +435,7 @@ const CORE = (() => {
     if (inp.rateMode === 'manual') return inp.manualRate + (env.bund[fix] - env.bund[inp.fixYears]);
     return estimateRate(env.bund, fix, inp.spread, ltv);
   }
-  // Spielraum für die Kreditrate beim Kauf: Netto − Lebenshaltung ohne Miete − Instandhaltung; Vorschlag mit Puffer
+  // Spielraum für die Kreditrate beim Kauf: Netto − Lebenshaltung ohne Kaltmiete − Instandhaltung; Vorschlag mit Puffer
   function rateRoom(inp, env, pT) {
     const t = pT ?? Math.max(env.nowYear, inp.purchaseYear);
     const hp = inp.priceBasis === 'heute' ? inp.housePrice * Math.pow(1 + inp.houseGrowth / 100, t - env.nowYear) : inp.housePrice;
@@ -755,7 +755,7 @@ const CORE = (() => {
 
       // 5. Einkommen / Ausgaben
       if (!retired) {
-        // Ab dem Hauskauf entfällt die Miete (sie steckt in den laufenden Ausgaben)
+        // Ab dem Hauskauf entfällt die Kaltmiete (sie steckt in den laufenden Ausgaben); Nebenkosten laufen weiter
         const ownFrac = !inp.buyHouse ? 0 : y > pY ? 1 : y === pY ? Math.max(0, (t1 - pT) / frac) : 0;
         // Hört der Partner / die Partnerin vor Ihnen auf zu arbeiten, fällt sein/ihr Netto aus dem Haushaltsnetto weg
         const partnerGone = inp.partnerNet > 0 && inp.partnerUntil > 0 && y >= inp.partnerUntil ? inp.partnerNet : 0;
@@ -1179,13 +1179,13 @@ const LAGE_G = [
     f: [
       { k: 'buyHouse', l: 'Haus kaufen', t: 'chk' },
       { k: 'housePrice', l: 'Hauspreis (heutige Preise)', u: '€', s: 10000, show: () => S.buyHouse, h: () => `steigt im Modell um ${nf(S.houseGrowth, 1)} % pro Jahr` },
-      { k: 'rent', l: 'davon Warmmiete', u: '€/Monat', s: 50, h: () => S.buyHouse ? 'fällt nach dem Hauskauf weg' : 'läuft in der Rente weiter' },
+      { k: 'rent', l: 'davon Kaltmiete', u: '€/Monat', s: 50, h: () => S.buyHouse ? 'fällt nach dem Hauskauf weg. Nebenkosten wie Heizung, Wasser und Grundsteuer zahlen Sie im eigenen Haus weiter' : 'läuft in der Rente weiter (mit der Inflation)' },
       { k: 'rateMax', l: 'Kreditrate höchstens', u: '€/Monat', s: 50, show: () => S.buyHouse, h: () => { const r = CORE.rateRoom(S, env()); return `0 = Vorschlag ${fEur(r.suggest)}: frei sind ca. ${fEur(Math.max(0, r.free))} nach Lebenshaltung und Instandhaltung, mit Puffer. Die Bank geht bis ca. ${fEur(r.bank)}.`; } },
       { k: 'btcCap', l: 'Höchstens Bitcoin fürs Haus', u: 'BTC', s: 0.05, show: () => S.buyHouse, h: () => `0 = die Hälfte Ihres Bestands (${fBtc(S.btc / 2)}). Reicht das nicht, rät der Rechner zum Verschieben.` },
     ] },
   { id: 'rente', t: 'Rente', sum: () => `Wunsch ${fEur(S.desired)}/Monat · ${S.finderGoal === 'target' ? 'Ziel ' + S.finderTarget : 'so früh wie sicher möglich'}`,
     f: [
-      { k: 'desired', l: 'Wunsch-Netto in der Rente', u: '€/Monat', s: 100, h: 'in heutiger Kaufkraft' },
+      { k: 'desired', l: 'Wunsch-Netto in der Rente', u: '€/Monat', s: 100, h: 'in heutiger Kaufkraft · inkl. Nebenkosten fürs Wohnen, ohne Miete und Kredit (Krankenversicherung und Instandhaltung rechnet der Rechner dazu)' },
       { k: 'finderGoal', l: 'Ziel', t: 'sel', o: [['earliest', 'So früh wie sicher möglich'], ['target', 'In einem bestimmten Jahr']] },
       { k: 'finderTarget', l: 'Wunschjahr', u: 'Jahr', s: 1, show: () => S.finderGoal === 'target' },
     ] },
@@ -1562,7 +1562,7 @@ function outHouseLoan() {
   } else if (S.strategy === 'top') h += `<div class="warn">Im Fall „${SCEN[S.scenario][0]}“ gibt es bis zum Planende keinen Verkaufszeitpunkt (Fenster über ${nf(S.windowGuard ?? 0.75)} × bzw. Kurs über ${nf(S.sellRatio)} × Trendwert) – der Kredit wird nur mit der normalen Rate getilgt.</div>`;
   const annu = p.rate + S.tilgung / 100, maxLoan = Math.max(0, Math.min(surplus * 12, S.netIncome * S.bankMaxPct / 100 * 12) / annu);
   if (S.finMode === 'rate') { const rr = CORE.rateRoom(S, e, S.purchaseYear); h += `<p class="note">Ihre Rate von <b>${fEur(p.wish)}</b> trägt einen Kredit von ${fEurS(p.loanAmt)}. Spielraum: frei sind ca. ${fEur(Math.max(0, rr.free))}/Monat nach Lebenshaltung und Instandhaltung, die Bank geht bis ca. ${fEur(rr.bank)}. ${help(GLOSS.rate)}</p>`; }
-  else h += `<p class="note">Tragbar wäre ein Kredit bis ca. <b>${fEurS(maxLoan)}</b> (Überschuss nach Wegfall der Miete ${fEur(surplus)}/Monat, Bankgrenze ${S.bankMaxPct} % vom Netto).</p>`;
+  else h += `<p class="note">Tragbar wäre ein Kredit bis ca. <b>${fEurS(maxLoan)}</b> (Überschuss nach Wegfall der Kaltmiete ${fEur(surplus)}/Monat, Bankgrenze ${S.bankMaxPct} % vom Netto).</p>`;
   // Kreditvarianten (Vergleich, ohne Empfehlung)
   const C = CORE.compareStrategies(S, e), cur = C.rows.find(r => r.fix === S.fixYears && r.strategy === S.strategy);
   const ey = C.evalY, cell = b => `<td><span class="dot ${b.status}"></span>${fR(b.netEval, ey)}</td>`;
