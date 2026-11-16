@@ -517,7 +517,8 @@ const CORE = (() => {
     return { free, bank, maint, suggest, hp };
   }
   // Höchstens so viele Bitcoin fürs Haus (0 = die Hälfte des heutigen Bestands)
-  const btcCapOf = inp => inp.btcCap > 0 ? inp.btcCap : inp.btc / 2;
+  // Keine feste Obergrenze mehr (ab v22): Fürs Haus dürfen alle Bitcoin eingesetzt werden – ob das trägt, prüfen Simulation und Kauf-Ampel (minBuyPrice)
+  const btcCapOf = inp => inp.btcCap > 0 ? inp.btcCap : inp.btc;
   // Gewählte Monatsrate: Plan-Rate (Finder/Regler), sonst Ihre Obergrenze, sonst der Vorschlag
   function wishRate(inp, env, pT) {
     if (inp.loanRate != null && inp.loanRate >= 0) return inp.loanRate;
@@ -717,7 +718,7 @@ const CORE = (() => {
             const need = Math.max(0, hpEst + nebenkosten(hpEst, inp).sum + inp.renovation - (inp.useCash ? Math.max(0, cash) : 0) - loanEst);
             const capBtc = inp.finMode === 'rate' ? btcCapOf(inp) : inp.btcMaxSell;
             const b0 = btc, got = sellBtc(Math.min(Math.min(capBtc, btc) * h.price, need), h.t, h.price);
-            preBtc = b0 - btc; preCash = got; cash += got; preDone = true;
+            preBtc = b0 - btc; preCash = got; cash += got; preDone = true; R.preT = h.t; R.prePrice = h.price;
             ev(`Eigenkapital im Verkaufsfenster gesichert: ${fBtc(preBtc)} zu ${fEurS(h.price)} = ${fEurS(got)}, bis zum Kauf auf Tagesgeld`, 'house', h.t);
           }
         }
@@ -1021,6 +1022,22 @@ const CORE = (() => {
     return null;
   }
 
+  // Kauf-Ampel: Wie tief darf Bitcoin beim Verkauf fürs Haus stehen, damit der ganze Plan (Kauf + Geld bis Planende) noch hält?
+  // Vorsichtig gerechnet: Der Kurs fällt genau zum Verkauf und erholt sich erst über `recover` Jahre (danach Modellpfad).
+  function minBuyPrice(inp, env, scen = 'fair', recover = 3) {
+    if (!inp.buyHouse) return null;
+    const ok = s => s.status !== 'red' && !s.bankFail && !(s.shortfallHouse > 0) && !(s.capShort > 0);
+    const base = simulate(inp, env, { scen }), p = base.purchase; if (!p) return null;
+    const pre = base.preT != null, tS = pre ? base.preT : inp.purchaseYear, model = pre ? base.prePrice : p.price;
+    if (p.btcTotal < 1e-6) return { none: true, model };
+    if (!ok(base)) return { fail: true, model, reason: base.reasons[0] };
+    const run = d => simulate(inp, env, { scen, shock: { start: tS - 1e-6, drop: d, recover } });
+    let lo = 0, hi = 0.98;
+    if (ok(run(hi))) lo = hi; else for (let i = 0; i < 14; i++) { const d = (lo + hi) / 2; if (ok(run(d))) lo = d; else hi = d; }
+    const s = run(lo);
+    return { price: s.preT != null ? s.prePrice : s.purchase.price, btc: s.purchase.btcTotal, model, at: tS, pre, any: lo >= 0.98 };
+  }
+
   function stressTests(inp, env) {
     const base = inp.scenario;
     const list = [
@@ -1062,11 +1079,11 @@ const CORE = (() => {
   // Ergebnis: Anteil der Zukünfte, in denen das Geld bis zum Planende reicht (und Hauskauf/Bank klappen)
   // Läuft in Portionen (step), damit die Seite beim Rechnen nicht stockt; monteCarlo() rechnet alles auf einmal
   function mcRunner(inp, env, n = 400, seed = 7, extra = {}) {
-    const rnd = rng(seed), out = { n, ok: 0, moneyOk: 0, calm: 0, houseIssue: 0, failAges: [], net60: [], btcRetire: [], btcHouse: [] };
+    const rnd = rng(seed), out = { n, ok: 0, moneyOk: 0, calm: 0, houseIssue: 0, failAges: [], net60: [], btcRetire: [], btcHouse: [], buyPx: [] };
     let k = 0;
     const step = m => { const end = Math.min(n, k + m); for (; k < end; k++) {
       const s = simulate(inp, env, { ...extra, path: mcPath(inp, env, rnd) });
-      // Erfolg = Kauf klappt wie geplant (Bank sagt ja, Bitcoin-Obergrenze reicht) UND das Geld reicht bis zum Planende
+      // Erfolg = Kauf klappt wie geplant (Bank sagt ja, Bitcoin reichen) UND das Geld reicht bis zum Planende
       const house = !!(s.bankFail || s.shortfallHouse > 0 || s.capShort > 0);
       if (house) out.houseIssue++;
       if (s.failYear == null) out.moneyOk++;
@@ -1074,11 +1091,12 @@ const CORE = (() => {
       if (s.status === 'green') out.calm++;
       if (s.failYear != null) out.failAges.push(s.failYear - inp.birthYear);
       const r60 = s.rows.find(x => x.age === 60) || s.rows[s.rows.length - 1];
-      out.net60.push(r60.net); out.btcRetire.push(s.retire ? s.retire.btcAfter : 0); if (s.purchase) out.btcHouse.push(s.purchase.btcTotal);
+      out.net60.push(r60.net); out.btcRetire.push(s.retire ? s.retire.btcAfter : 0); if (s.purchase) { out.btcHouse.push(s.purchase.btcTotal); out.buyPx.push(s.preT != null ? s.prePrice : s.purchase.price); }
     } return k >= n; };
     const result = () => {
     const q = (a, p) => { const b = a.slice().sort((x, y) => x - y); return b.length ? b[Math.min(b.length - 1, Math.floor(p * b.length))] : 0; };
     out.success = out.ok / n; out.moneyShare = out.moneyOk / n; out.calmShare = out.calm / n; out.houseShare = out.houseIssue / n;
+    out.buyPx.sort((x, y) => x - y);
     out.btcHouseP50 = q(out.btcHouse, 0.5); out.btcHouseP90 = q(out.btcHouse, 0.9);
     out.net60p10 = q(out.net60, 0.1); out.net60p50 = q(out.net60, 0.5); out.btcP50 = q(out.btcRetire, 0.5);
     out.failAgeMedian = out.failAges.length ? q(out.failAges, 0.5) : null;
@@ -1105,7 +1123,7 @@ const CORE = (() => {
   const PL_FIT = { A: 6.6021e-17, n: 5.593 };
   const PL_SANTO = { A: 1.0117e-17, n: 5.82 };
 
-  return { yearToMs, msToYear, daysSinceGenesis, plUsd, plGrowth, nebenkosten, ltvAdj, estimateRate, loanRateFor, rateRoom, wishRate, loanForRate, btcCapOf,
+  return { yearToMs, msToYear, daysSinceGenesis, plUsd, plGrowth, nebenkosten, ltvAdj, estimateRate, loanRateFor, rateRoom, wishRate, loanForRate, btcCapOf, minBuyPrice,
     pricePath, scenarioMult, cycleFactor, cycleLabel, PL_FIT, PL_SANTO, WORLDS, finderGrid, evalCombo, rankFinder, evalPlan, monteCarlo, mcRunner, signalScore, SIG, KINDERGELD, sellWindow, halvingFor, simulate, compareStrategies, earliestRetire, stressTests, fEur, fEurS, fBtc, fPct };
 })();
 // ===== CORE-END =====
@@ -1120,7 +1138,7 @@ const fQ = t => { const y = Math.floor(t + 1e-9); return `Q${Math.min(4, Math.fl
 const nf = (v, d = 2) => v.toLocaleString('de-DE', { maximumFractionDigits: d });
 
 const DEFAULTS = {
-  _v: 8, scenario: 'fair', realView: true, prevPlan: null, fromFinder: true, theme: 'auto', lageOpen: true,
+  _v: 9, scenario: 'fair', realView: true, prevPlan: null, fromFinder: true, theme: 'auto', lageOpen: true,
   example: true, // neutrale Beispielwerte, bis eigene Zahlen eingetragen oder ein Plan importiert wird
   birthYear: 1990, kid1: 0, kid2: 0, ageEnd: 90,
   btc: 2.0, otherAssets: 20000, netIncome: 5000, expenses: 3500, dca: 0, taxFreeFrom: '',
@@ -1144,10 +1162,14 @@ let FRESH = false;
 let S = load();
 // Ältere Speicherstände: Finanzierung auf „Monatsrate, Rest Bitcoin“ umstellen
 function migrate(j) {
-  if (j._v >= 8) return j;
-  if (!(j._v >= 7)) j = { ...j, finMode: !j.finMode || j.finMode === 'maxSell' ? 'rate' : j.finMode, loanRate: -1, fromFinder: true, lageOpen: !!j.example };
-  // ab v8: eine Kreditrate (Regler). Eine früher eingetragene Obergrenze wird Ihre Rate.
-  return { ...j, _v: 8, loanRate: j.rateMax > 0 ? j.rateMax : j._v >= 7 && j.loanRate >= 0 && j.fromFinder === false ? j.loanRate : -1, rateMax: 0, finMode: 'rate', finderGoal: 'earliest' };
+  if (j._v >= 9) return j;
+  if (!(j._v >= 8)) {
+    if (!(j._v >= 7)) j = { ...j, finMode: !j.finMode || j.finMode === 'maxSell' ? 'rate' : j.finMode, loanRate: -1, fromFinder: true, lageOpen: !!j.example };
+    // ab v8: eine Kreditrate (Regler). Eine früher eingetragene Obergrenze wird Ihre Rate.
+    j = { ...j, _v: 8, loanRate: j.rateMax > 0 ? j.rateMax : j._v >= 7 && j.loanRate >= 0 && j.fromFinder === false ? j.loanRate : -1, rateMax: 0, finMode: 'rate', finderGoal: 'earliest' };
+  }
+  // ab v9: keine feste Bitcoin-Obergrenze mehr – die Kauf-Ampel rechnet den Mindestkurs aus Ihrem Plan
+  return { ...j, _v: 9, btcCap: 0 };
 }
 function load() {
   try { const j = JSON.parse(localStorage.getItem(STORE)); if (j && typeof j === 'object') return { ...DEFAULTS, ...migrate(j), scenario: 'fair', realView: true }; } catch (e) {}
@@ -1229,11 +1251,11 @@ const GLOSS = {
   vfe: 'Vorfälligkeitsentschädigung: Gebühr der Bank, wenn Sie einen Kredit mit fester Zinsbindung vorzeitig ganz zurückzahlen. Nach 10 Jahren fällt sie weg (§ 489 BGB).',
   split: 'Kredit aufteilen: Den Teil, den Ihr Gehalt trägt, mit festem Zins; den Rest variabel – der lässt sich im Bitcoin-Hoch jederzeit ohne Gebühr ablösen.',
   kaufkraft: 'Heutige Kaufkraft: Zukünftige Euro-Beträge werden um die Inflation bereinigt. 1 Mio. € im Jahr 2054 entsprechen bei 2 % Inflation heute nur ca. 0,57 Mio. €.',
-  ampel: 'Kauf-Ampel: Ihre Rate trägt den Kredit, dazu kommt Ihr Erspartes. Den Rest decken Bitcoin – höchstens Ihre Obergrenze. Daraus folgt der Mindestkurs: Steht Bitcoin beim Kauf darüber, reichen Ihre Bitcoin. Steht er darunter, lieber warten, günstiger kaufen oder die Rate erhöhen. Prüfen Sie die Ampel an den Kontrollpunkten und kurz vor dem Kauf.',
+  ampel: 'Kauf-Ampel: Ihre Rate trägt den Kredit, dazu kommt Ihr Erspartes. Den Rest decken Bitcoin – je tiefer der Kurs, desto mehr. Der Rechner sucht den Kurs, bei dem Ihr ganzer Plan gerade noch bis zum Planende reicht, vorsichtig gerechnet: Bitcoin fällt genau zum Verkauf und erholt sich erst über 3 Jahre. Grün = mindestens 15 % darüber, Gelb = knapp, Rot = darunter – dann lieber mit dem Hauskauf warten, günstiger kaufen oder die Rate erhöhen. Prüfen Sie die Ampel an den Kontrollpunkten und kurz vor dem Kauf.',
   welten: 'Ein Plan gilt als sicher, wenn er in drei Fällen nicht scheitert: Bitcoin schwach, normal und normal, aber ohne die bisherigen Zyklus-Hochs.',
-  rate: 'Kreditrate: Der Kredit wird so hoch, wie diese Monatsrate trägt. Bitcoin füllen nur den Rest auf – bei hohem Kurs wenige, bei niedrigem mehr, höchstens bis zu Ihrer Obergrenze. Der variable Teil des Kredits wird im nächsten Verkaufsfenster mit Bitcoin abgelöst, also meist zu einem höheren Kurs.',
+  rate: 'Kreditrate: Der Kredit wird so hoch, wie diese Monatsrate trägt. Bitcoin füllen nur den Rest auf – bei hohem Kurs wenige, bei niedrigem mehr (wie tief der Kurs höchstens sein darf, zeigt die Kauf-Ampel). Der variable Teil des Kredits wird im nächsten Verkaufsfenster mit Bitcoin abgelöst, also meist zu einem höheren Kurs.',
   kvar: 'Mehr Kredit heißt: beim Kauf weniger Bitcoin verkaufen. Im Modell lohnt sich das, weil Bitcoin langfristig deutlich stärker wächst als der Kreditzins (ca. 4 %). Dagegen stehen: Schulden bleiben auch im Bitcoin-Tief, die Rate kommt nach dem Rentenstart aus dem Tank, nach der Zinsbindung kann der Zins steigen, und Zinsen fürs selbst bewohnte Haus sind nicht absetzbar.',
-  mc: 'Sicherheit: Der Rechner spielt 400 mögliche Bitcoin-Zukünfte durch. Ein Erfolg zählt nur, wenn der Hauskauf wie geplant klappt (die Bank finanziert, Ihre Bitcoin-Obergrenze reicht) und das Geld bis zum Planende reicht. Jede pendelt wie die echten Kurse seit 2015 um den Trend (Rückkehr zum Trend mit Halbwertszeit ≈ 1 Jahr), mit Wochenschwankungen, die zufällig aus den 618 tatsächlichen Wochen gezogen werden – samt Crashs. Jede Zukunft hat zudem eine eigene Trendformel (Santostasi bis flachere eigene Auswertung) und ein eigenes typisches Niveau (0,65–0,85 × Trendwert).',
+  mc: 'Sicherheit: Der Rechner spielt 400 mögliche Bitcoin-Zukünfte durch. Ein Erfolg zählt nur, wenn der Hauskauf wie geplant klappt (die Bank finanziert, Ihre Bitcoin reichen) und das Geld bis zum Planende reicht. Jede pendelt wie die echten Kurse seit 2015 um den Trend (Rückkehr zum Trend mit Halbwertszeit ≈ 1 Jahr), mit Wochenschwankungen, die zufällig aus den 618 tatsächlichen Wochen gezogen werden – samt Crashs. Jede Zukunft hat zudem eine eigene Trendformel (Santostasi bis flachere eigene Auswertung) und ein eigenes typisches Niveau (0,65–0,85 × Trendwert).',
   signal: 'Signal: Mittel aus drei Indikatoren – Kurs ÷ Trendwert (Power Law), MVRV (Marktwert ÷ Einstandswert aller Bitcoin, On-Chain-Daten von Coin Metrics) und Mayer (Kurs ÷ 200-Tage-Schnitt). Jeder ist auf „letztes Tief = 0, letztes Hoch = 100“ skaliert. Kein einzelner Indikator hat alle Hochs erwischt (z. B. Pi-Cycle 2025 nicht) – deshalb die Mischung. Kein Kauf- oder Verkaufsrat.',
 };
 
@@ -1259,14 +1281,13 @@ const LAGE_G = [
       { k: 'netIncome', l: 'Haushaltsnetto', u: '€/Monat', s: 100 },
       { k: 'expenses', l: 'Ausgaben inkl. Miete', u: '€/Monat', s: 100 },
     ] },
-  { id: 'haus', t: 'Haus', sum: () => S.buyHouse ? `${fEurS(S.housePrice)} · Rate bis ${fEur(rateMaxEff())} · höchstens ${fBtc(CORE.btcCapOf(S))}` : 'kein Hauskauf',
+  { id: 'haus', t: 'Haus', sum: () => S.buyHouse ? `${fEurS(S.housePrice)} · Rate ${fEur(rateMaxEff())}` : 'kein Hauskauf',
     f: [
       { k: 'buyHouse', l: 'Haus kaufen', t: 'chk' },
       { k: 'housePrice', l: 'Hauspreis (heutige Preise)', u: '€', s: 10000, show: () => S.buyHouse, h: () => `steigt im Modell um ${nf(S.houseGrowth, 1)} % pro Jahr` },
       { k: 'rent', l: 'davon Kaltmiete', u: '€/Monat', s: 50, h: () => S.buyHouse ? 'fällt nach dem Hauskauf weg. Nebenkosten wie Heizung, Wasser und Grundsteuer zahlen Sie im eigenen Haus weiter' : 'läuft in der Rente weiter (mit der Inflation)' },
       { k: 'tilgung', l: 'Anfängliche Tilgung', u: '% pro Jahr', s: 0.1, show: () => S.buyHouse, h: 'Banken verlangen meist 1–2 %. Weniger Tilgung = mehr Kredit bei gleicher Rate, dafür länger Schulden' },
       { k: 'minWorkAfterBuy', l: 'Nach dem Kauf noch arbeiten', u: 'Jahre', s: 0.5, show: () => S.buyHouse, h: 'Die Bank gibt den Kredit nur mit Arbeitseinkommen. 1 Jahr ist ein vorsichtiger, ehrlicher Puffer (Probezeit, Selbstauskunft)' },
-      { k: 'btcCap', l: 'Höchstens Bitcoin fürs Haus', u: 'BTC', s: 0.05, show: () => S.buyHouse, h: () => `0 = die Hälfte Ihres Bestands (${fBtc(S.btc / 2)}). Reicht das nicht, rät der Rechner zum Verschieben.` },
     ] },
   { id: 'rente', t: 'Rente', sum: () => `Wunsch ${fEur(S.desired)}/Monat`,
     f: [
@@ -1391,7 +1412,7 @@ function renderLage() {
     <div class="sechead"><div><h2>Ihre Lage</h2><p class="lead">Diese Angaben genügen für eine Antwort.</p></div></div>
     ${S.example ? `<div class="exbanner" id="exBanner"><b>Beispielwerte.</b> Tragen Sie Ihre eigenen Zahlen ein oder laden Sie einen gespeicherten Plan (ganz unten „Plan importieren“). Ihre Angaben bleiben nur auf diesem Gerät.</div>` : ''}
     <div class="fields lage">${ess.map(fieldHtml).join('')}</div>
-    <details class="more lmore"${LAGE_MORE ? ' open' : ''}><summary>Mehr Angaben: Familie, Kredit, Bitcoin-Obergrenze</summary>
+    <details class="more lmore"${LAGE_MORE ? ' open' : ''}><summary>Mehr Angaben: Familie, Kredit, Einstandspreis</summary>
       ${LAGE_G.map(g => { const f = g.f.filter(x => !ESSENTIAL.includes(x.k)); return f.length ? `<h3 class="grp">${g.t}</h3><div class="fields lage">${f.map(fieldHtml).join('')}</div>` : ''; }).join('')}
     </details>
     <div class="row end"><button class="primary" id="bLage">Fertig</button></div>`
@@ -1864,23 +1885,37 @@ function q1Chart() {
   // Streifen: frühester Rentenstart je Kaufjahr
   const sy = P.t + H + 8, best = FINDER.res && FINDER.res.ranked[0], bestY = best && !best.noHouse ? Math.floor(best.buy + 1e-9) : null;
   const curY = Math.floor(S.purchaseYear + 1e-9);
+  const bv = MC.buy || {};
   BUYROWS.forEach((x, i) => { if (x.y < x0 || x.y >= x1) return; const x_ = X(x.y) + 1, wd = X(x.y + 1) - X(x.y) - 2;
-    const fill = !x.r ? 'var(--red-bg)' : x.y === bestY ? 'var(--green)' : 'var(--green-bg)', tc = !x.r ? 'var(--red)' : x.y === bestY ? '#fff' : 'var(--green)';
+    // Farbe = Sicherheit über viele Zukünfte (grün ab 80 %, gelb ab 60 %, sonst rot)
+    const v = x.r ? bv[x.y] : null, lvl = !x.r ? 'red' : x.y === bestY ? 'best' : v == null || v >= 0.8 ? 'green' : v >= 0.6 ? 'yellow' : 'red';
+    const fill = { best: 'var(--green)', green: 'var(--green-bg)', yellow: 'var(--yellow-bg)', red: 'var(--red-bg)' }[lvl], tc = { best: '#fff', green: 'var(--green)', yellow: 'var(--yellow)', red: 'var(--red)' }[lvl];
     const cell = `<rect x="${x_.toFixed(1)}" y="${sy}" width="${wd.toFixed(1)}" height="16" rx="3" style="fill:${fill}${x.y === curY ? ';stroke:var(--ink);stroke-width:1.5' : ''}"/><text x="${(x_ + wd / 2).toFixed(1)}" y="${sy + 12}" text-anchor="middle" style="fill:${tc};font-weight:600">${x.r ? '→' + String(x.r.retire).slice(2) : '✕'}</text>`;
     // Antippen übernimmt Kauf und frühesten Rentenstart dieses Jahres
-    g += x.r && x.y !== curY ? `<g data-apply="buy:${i}" style="cursor:pointer"><title>Kauf ${x.y} → Rente ${x.r.retire}</title>${cell}</g>` : cell; });
+    g += x.r && x.y !== curY ? `<g data-apply="buy:${i}" style="cursor:pointer"><title>Kauf ${x.y} → Rente ${x.r.retire}${v != null ? ` · Sicherheit ${pct(v)}` : ''}</title>${cell}</g>` : cell; });
   for (let y = Math.ceil(x0); y < x1; y += (W < 420 ? 2 : 1)) if (X(y + 0.5) < w - 14) g += `<text x="${X(y + 0.5).toFixed(1)}" y="${h - 4}" text-anchor="middle">${y}</text>`;
   return `<svg class="chart q1c" viewBox="0 0 ${w} ${h}" role="img" aria-label="Bitcoin-Kurs im Modell und frühester Rentenstart je Kaufjahr">${g}</svg>
-    <p class="note">Orange: Bitcoin-Kurs im Modell (Fall „Normal“), grau: echter Kurs, hell: Verkaufsfenster. Streifen: Kauf in diesem Jahr → frühester sicherer Rentenstart (✕ = kein sicherer Plan, antippen zum Wählen).</p>`;
+    <p class="note">Orange: Bitcoin-Kurs im Modell (Fall „Normal“), grau: echter Kurs, hell: Verkaufsfenster. Streifen: Kauf in diesem Jahr → frühester Rentenstart. Farbe = Sicherheit: grün ab 80 %, gelb ab 60 %, rot darunter (✕ = kein Plan). Antippen zum Wählen.</p>`;
+}
+// Kauf-Ampel: Mindestkurs aus Ihrem ganzen Plan (CORE.minBuyPrice), zwischengespeichert – rechnet nur neu, wenn sich der Plan ändert
+let AMP = { key: null, v: null };
+function ampel() {
+  if (!S.buyHouse) return null;
+  const e = env(), k = mcKey(S) + '|' + Math.round(e.priceEur);
+  if (AMP.key !== k) AMP = { key: k, v: CORE.minBuyPrice(S, e) };
+  return AMP.v;
 }
 function ampelHtml() {
-  const R = MAIN_RUN, p = R.purchase; if (!p || S.finMode !== 'rate') return '';
-  const saved = p.cashUsed - (p.preCash || 0), loanBase = p.loanAmt - (R.capShort || 0), btcEur = Math.max(0, p.total - saved - loanBase), cap = CORE.btcCapOf(S);
-  if (btcEur < 1) return `<div class="amp ok"><b>Kauf-Ampel: grün.</b> Kredit und Erspartes reichen – keine Bitcoin nötig.</div>`;
-  const minP = btcEur / cap, ok = p.price >= minP * 1.15, mid = p.price >= minP;
-  return `<div class="amp ${ok ? 'ok' : mid ? 'mid' : 'bad'}"><b>Kauf-Ampel:</b> Das Haus kaufen, wenn 1 Bitcoin zum Kaufzeitpunkt mindestens <b>${fEurS(minP)}</b> wert ist – sonst mit dem Hauskauf warten. ${help(GLOSS.ampel)}
-    <span class="note">Warum: Nach Kredit und Erspartem fehlen ca. ${fEurS(btcEur)}. Die sollen höchstens ${fBtc(cap)} decken (Ihre Obergrenze) – ${fEurS(btcEur)} ÷ ${nf(cap, 2)} = ${fEurS(minP)} je Bitcoin.</span>
-    <span class="note">Heute ${fEurS(env().priceEur)} · im Modell zum Kauf ${fEurS(p.price)}.</span></div>`;
+  const m = ampel(); if (!m) return '';
+  if (m.none) return `<div class="amp ok"><b>Kauf-Ampel: grün.</b> Kredit und Erspartes reichen – keine Bitcoin nötig.</div>`;
+  if (m.fail) return `<div class="amp bad"><b>Kauf-Ampel: rot.</b> Ihr Plan hält schon im Normalfall nicht – erst Kreditrate, Kaufjahr oder Rentenstart ändern. ${help(GLOSS.ampel)}</div>`;
+  if (m.any) return `<div class="amp ok"><b>Kauf-Ampel: grün.</b> Ihr Plan hält selbst bei sehr tiefem Bitcoin-Kurs. ${help(GLOSS.ampel)}</div>`;
+  const ok = m.model >= m.price * 1.15, mid = m.model >= m.price, when = m.pre ? `beim Verkauf im Verkaufsfenster (${fQ(m.at)})` : 'zum Kaufzeitpunkt';
+  // Die Ampel prüft nur den Kurs beim Kauf – liegt das Risiko danach (früher Kauf, frühe Rente), deutlich sagen
+  const sn = safetyNow(), warn = sn && !sn.est && sn.v < 0.6 ? `<span class="note"><b>Achtung:</b> Auch über diesem Kurs ist der Plan nur zu ${pct(sn.v)} sicher – das Risiko liegt in den Jahren nach dem Kauf.</span>` : '';
+  return `<div class="amp ${ok ? 'ok' : mid ? 'mid' : 'bad'}"><b>Kauf-Ampel:</b> Das Haus kaufen, wenn 1 Bitcoin ${when} mindestens <b>${fEurS(m.price)}</b> wert ist – sonst mit dem Hauskauf warten. ${help(GLOSS.ampel)}
+    <span class="note">Warum: Darunter müssten Sie mehr als ca. ${fBtc(m.btc)} fürs Haus verkaufen, und Ihr Plan reicht nicht mehr bis Alter ${S.ageEnd} – vorsichtig gerechnet mit einer Erholung erst über 3 Jahre.</span>
+    <span class="note">Heute ${fEurS(env().priceEur)} · im Modell dann ${fEurS(m.model)}.</span>${warn}</div>`;
 }
 function renderQ1() {
   const el = document.getElementById('q1Body'); if (!el) return;
@@ -1925,7 +1960,7 @@ function renderQ2() {
   const rr = R.rows.find(x => x.y === S.retireYear), payoff = R.events.filter(e => e.type === 'loan' && /abgelöst/.test(e.txt)).pop();
   const sup = SCEN_RUNS.sup;
   el.innerHTML = `<div class="qa">${used > 1e-4 ? `${fBtc(used)}${saved > 0.005 ? ` – der Kredit schützt ${fBtc(saved)}` : ''}` : 'Keine Bitcoin nötig'}</div>
-    ${zero ? (zero.short ? `<div class="bl">Ohne Kredit: <span class="neg">Ihre Bitcoin-Obergrenze reicht nicht</span></div>` : bar(zero.btc, `Ohne Kredit: ${fBtc(zero.btc)} verkaufen`)) : ''}
+    ${zero ? (zero.short ? `<div class="bl">Ohne Kredit: <span class="neg">Ihre Bitcoin reichen nicht</span></div>` : bar(zero.btc, `Ohne Kredit: ${fBtc(zero.btc)} verkaufen`)) : ''}
     ${bar(used, p.loanAmt > 1 ? `Mit ${fEurS(p.loanAmt)} Kredit (${fEur(p.pmt)}/Monat): ${fBtc(used)} verkaufen` : `${fBtc(used)} verkaufen`)}
     <p class="s"><span class="lg sold"></span>fürs Haus verkauft <span class="lg kept"></span>bleibt (von ${fBtc(S.btc)}).${saved > 0.005 ? ` Geschützt: <b>${fBtc(saved)} ≈ ${fR(saved * pv, yV + 0.5)}</b> im Jahr ${yV} (heutige Kaufkraft).` : ''}${sup && sup.capShort > 0 ? ' Bei schwachem Kurs reichen die Bitcoin nicht.' : sup && sup.purchase ? ` Bei schwachem Kurs: ${fBtc(sup.purchase.btcTotal)}.` : ''}</p>
     ${kvOk && MC.kv[0] != null && sn ? `<p class="s">Sicherheit: ohne Kredit ${pct(MC.kv[0])} → mit Ihrer Rate <b>${sn.est ? '≈' : ''}${pct(sn.v)}</b>.</p>` : ''}
@@ -1978,7 +2013,9 @@ function renderQ4() {
   if (!bad.length) add(true, 'Hält auch bei Crash (−75 % zum Rentenstart), schwachem Bitcoin, flacherem Trend, ohne Zyklus, höheren Zinsen, Inflation und starkem Euro');
   else bad.forEach(t => add(false, `Hält nicht: ${t.name}`));
   if (MC.tax && r) add(MC.tax.success >= r.success - 0.03, `Fällt die Steuerfreiheit nach 1 Jahr weg: Sicherheit <b>${pct(MC.tax.success)}</b> ${help(GLOSS.steuer)}`);
-  if (r && r.houseShare > 0.1 && S.buyHouse) add(false, `In ${pct(r.houseShare)} der Zukünfte steht Bitcoin beim Kauf unter der Kauf-Ampel – dann mit dem Hauskauf warten oder die Rate erhöhen`);
+  const am = ampel(), below = r && r.buyPx && r.buyPx.length && am && am.price ? r.buyPx.filter(x => x < am.price).length / r.buyPx.length : 0;
+  if (below > 0.1) add(false, `In ${pct(below)} der Zukünfte steht Bitcoin beim Kauf unter der Kauf-Ampel (${fEurS(am.price)}) – dann mit dem Hauskauf warten oder die Rate erhöhen`);
+  else if (r && r.houseShare > 0.1 && S.buyHouse) add(false, `In ${pct(r.houseShare)} der Zukünfte klappt der Kauf nicht wie geplant (Bank oder Bitcoin reichen nicht)`);
   const cps = []; if (S.buyHouse && S.purchaseYear > ENV.nowYear + 0.5) { const wv = CORE.sellWindow(ENV.nowYear); if (wv.end < S.purchaseYear) cps.push(fMonth(wv.end)); cps.push(qWord(S.purchaseYear - 1)); }
   if (cps.length) add(null, `Kontrollpunkte: ${cps.join(' und ')} – Kauf-Ampel prüfen und den Rechner neu öffnen`);
   const items = checklistItems(), done = items.filter(i => S.done[i.id]).length;
@@ -2104,12 +2141,12 @@ function mcKey(inp) { const o = { ...inp }; ['scenario', 'realView', 'expert', '
 const planInp = r => ({ ...S, buyHouse: !r.noHouse, purchaseYear: r.buy ?? S.purchaseYear, priceBasis: 'heute', finMode: 'rate', loanRate: r.noHouse ? 0 : S.loanRate, tankMode: r.tank, retireYear: r.retire, payoffYear: r.retire });
 const recKeyOf = () => { const b = FINDER.res && FINDER.res.ranked[0]; return mcKey({ ...S, purchaseYear: 0, loanRate: 0, retireYear: 0, payoffYear: 0, tankMode: '', btcMaxSell: 0, finMode: '', buyHouse: 0 }) + '|' + (FINDER.sig || '') + (b ? `|${b.buy}|${b.rate}|${b.retire}|${b.tank}` : ''); };
 const byKeyOf = () => mcKey({ ...S, purchaseYear: 0, loanRate: 0, retireYear: 0, payoffYear: 0, tankMode: '' }) + '|' + (FINDER.sig || '');
-const needMC = () => MC.key !== mcKey(S) || MC.recKey !== recKeyOf() || (S.buyHouse && S.finMode === 'rate' && MC.kvKey !== kvKey()) || (FINDER.res && FINDER.res.byYear && FINDER.res.byYear.length > 0 && MC.byKey !== byKeyOf()) || (S.buyHouse && FINDER.res && FINDER.res.noHouse && FINDER.res.noHouse.retire && MC.nhKey !== byKeyOf());
+const needMC = () => MC.key !== mcKey(S) || MC.recKey !== recKeyOf() || (S.buyHouse && S.finMode === 'rate' && MC.kvKey !== kvKey()) || (FINDER.res && FINDER.res.byYear && FINDER.res.byYear.length > 0 && MC.byKey !== byKeyOf()) || (S.buyHouse && FINDER.res && FINDER.res.noHouse && FINDER.res.noHouse.retire && MC.nhKey !== byKeyOf()) || (S.buyHouse && FINDER.res && MC.buyKey !== byKeyOf());
 function scheduleMC() {
   if (!needMC()) return;
   clearTimeout(MC.timer); MC.timer = setTimeout(runMC, Math.max(600, lightUntil - Date.now() + 300));
 }
-const renderMCAll = () => { renderAnswer(); renderQ2(); renderQ3(); renderQ4(); };
+const renderMCAll = () => { renderAnswer(); renderQ1(); renderQ2(); renderQ3(); renderQ4(); };
 // Monte-Carlo in Portionen à 25 Zukünfte: die Seite bleibt bedienbar; bei neuer Eingabe wird abgebrochen (null)
 async function mcAsync(inp, e, n, extra, still) {
   const r = CORE.mcRunner(inp, e, n, 7, extra || {});
@@ -2161,12 +2198,18 @@ async function runMCInner() {
     const k = byKeyOf(), v = await mcAsync(planInp(nh), e, MC_N, null, still); if (!v) return void (MC.again = true);
     MC.nh = v.success; MC.nhKey = k; renderQ3();
   }
+  // Kaufjahr-Streifen: echte Sicherheit je Kaufjahr – die drei Prüfwelten des Finders allein sind bei frühem Kauf zu milde
+  if (S.buyHouse && FINDER.res && !FINDER.running && MC.buyKey !== byKeyOf()) {
+    buildBuyRows(); const k = byKeyOf(), res = {}; MC.buy = res;
+    for (const x of BUYROWS) { if (!x.r) continue; const v = await mcAsync(planInp(x.r), e, MC_N, null, still); if (!v) return void (MC.again = true); res[x.y] = v.success; renderQ1(); }
+    MC.buyKey = k;
+  }
 }
 
 // ===================== Strategie-Suche =====================
 const FINDER = { running: false, res: null, sig: null, queued: false, timer: null };
 const FINDER_FREE = ['scenario', 'purchaseYear', 'btcMaxSell', 'finMode', 'tankMode', 'retireYear', 'payoffYear', 'priceBasis', 'realView', 'expert', 'prevPlan', 'fromFinder', 'btcManual', 'theme', 'planBase', 'checkins', 'done', 'lombardRate', 'lombardLtv', 'lageOpen', '_v', 'example'];
-function finderSig() { const o = { ...S, _model: 3 }; FINDER_FREE.forEach(k => delete o[k]); return JSON.stringify(o); }
+function finderSig() { const o = { ...S, _model: 4 }; FINDER_FREE.forEach(k => delete o[k]); return JSON.stringify(o); }
 (function loadFinder() { try { const j = JSON.parse(localStorage.getItem(STORE + '-finder')); if (j && j.res) { FINDER.res = j.res; FINDER.sig = j.sig; } } catch (e) {} })();
 function saveFinder() { try { localStorage.setItem(STORE + '-finder', JSON.stringify({ sig: FINDER.sig, res: FINDER.res })); } catch (e) {} }
 // veraltet, wenn sich Angaben geändert haben oder der Bitcoin-Kurs seit der Suche um mehr als 5 % bewegt hat
