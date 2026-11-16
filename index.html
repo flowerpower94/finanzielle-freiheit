@@ -848,14 +848,15 @@ const CORE = (() => {
       }
 
       // 6. Steuer auf BTC-Verkäufe innerhalb der Haltefrist (Freigrenze 1.000 €) – pauschal 40 % als Vorsichtswert
-      if (yearTaxable >= 1000) { const tax = yearTaxable * 0.40; flow -= tax; R.taxPaid += tax; ev(`BTC-Verkauf vor Ablauf der Haltefrist – ca. ${fEurS(tax)} Steuer`, 'warn'); }
-      if (yearTaxAll > 0) { const tax = yearTaxAll * ABGELT; flow -= tax; R.taxPaid += tax; yearTaxAll = 0; }
+      let taxY = 0;
+      if (yearTaxable >= 1000) { const tax = yearTaxable * 0.40; flow -= tax; R.taxPaid += tax; taxY += tax; ev(`BTC-Verkauf vor Ablauf der Haltefrist – ca. ${fEurS(tax)} Steuer`, 'warn'); }
+      if (yearTaxAll > 0) { const tax = yearTaxAll * ABGELT; flow -= tax; R.taxPaid += tax; taxY += tax; yearTaxAll = 0; }
 
       // 7. Konten buchen
       if (!retired) {
         cash += flow;
         if (cash < -1) {
-          R.cashNeg = true;
+          R.cashNeg = true; if (taxY > 1000) R.cashNegTax = true;
           const got = sellBtc(Math.min(-cash, btc * price), tm, price); cash += got;
           if (got > 0) { R.forced++; if (price < fv * 0.999) R.forcedBelowFv++; }
           if (cash < -1 && R.failYear == null) { R.failYear = y; ev('Kein Geld mehr für Rate/Ausgaben', 'fail'); }
@@ -912,7 +913,8 @@ const CORE = (() => {
     if (R.failYear != null) flag(3, `Geld leer mit ${R.failYear - inp.birthYear}`, `Das Geld reicht nur bis ${R.failYear} (Alter ${R.failYear - inp.birthYear}).`);
     if (R.payoffShort > 0) flag(2, 'Tilgung nicht ganz möglich', 'Die geplante Ablösung des Kredits ist mit den Bitcoin nicht ganz möglich.');
     if (R.forcedBelowFv > 0) flag(2, `Notverkäufe im Tief (${R.forcedBelowFv} J.)`, `Das Geld reicht bis ${inp.ageEnd}, aber in ${R.forcedBelowFv} Jahr${R.forcedBelowFv > 1 ? 'en' : ''} müssen Bitcoin zu schwachen Kursen verkauft werden, weil der Sicherheitstank leer ist.`);
-    if (R.cashNeg) flag(1, 'Rate höher als Überschuss', 'Vor der Rente ist die Kreditrate höher als der monatliche Überschuss – die Lücke kommt aus Erspartem oder kleinen Bitcoin-Verkäufen.');
+    if (R.cashNegTax) flag(1, 'Steuer aus Bitcoin', 'Vor der Rente reicht das Ersparte nicht für die Steuer auf Bitcoin-Verkäufe – dafür werden zusätzlich Bitcoin verkauft.');
+    else if (R.cashNeg) flag(1, 'Rate höher als Überschuss', 'Vor der Rente ist die Kreditrate höher als der monatliche Überschuss – die Lücke kommt aus Erspartem oder kleinen Bitcoin-Verkäufen.');
     const maxSev = flags.reduce((m, f) => Math.max(m, f.sev), 0);
     status = maxSev >= 3 ? 'red' : maxSev >= 1 ? 'yellow' : 'green';
     if (status === 'red') { for (let i = reasons.length - 1; i >= 0; i--) if (flags[i].sev < 3) reasons.splice(i, 1); }
@@ -1032,7 +1034,11 @@ const CORE = (() => {
       { name: 'Der Euro wertet gegenüber dem Dollar um 30 % auf (Bitcoin in Euro weniger wert)', opt: { scen: base }, env: { usdPerEur: env.usdPerEur * 1.3 } },
     ];
     if (!inp.cycleOn) list[3].name = 'Der 4-Jahres-Zyklus läuft doch weiter (Hochs und Tiefs wie bisher)';
-    return list.map(t => { const s = simulate(t.inp ? { ...inp, ...t.inp } : inp, t.env ? { ...env, ...t.env } : env, t.opt); return { name: t.name, status: s.status, reason: s.reasons[0], s }; });
+    const tax0 = simulate(inp, env, { scen: base }).taxPaid;
+    return list.map(t => { const s = simulate(t.inp ? { ...inp, ...t.inp } : inp, t.env ? { ...env, ...t.env } : env, t.opt);
+      // Beim Steuer-Test zuerst sagen, was die Steuer kostet
+      const extra = t.opt.taxAllFrom ? `Zusätzliche Steuer auf Bitcoin-Gewinne bis 90: ca. ${fEurS(Math.max(0, s.taxPaid - tax0))} (nominal). ` : '';
+      return { name: t.name, status: s.status, reason: extra + s.reasons[0], s }; });
   }
 
   // ---------- Monte-Carlo: 1 Plan, viele mögliche Zukünfte ----------
@@ -1264,7 +1270,7 @@ const LAGE_G = [
     ] },
   { id: 'rente', t: 'Rente', sum: () => `Wunsch ${fEur(S.desired)}/Monat`,
     f: [
-      { k: 'desired', l: 'Wunsch-Netto in der Rente', u: '€/Monat', s: 100, h: 'in heutiger Kaufkraft · inkl. Nebenkosten fürs Wohnen, ohne Miete und Kredit (Krankenversicherung und Instandhaltung rechnet der Rechner dazu)' },
+      { k: 'desired', l: 'Wunsch-Netto in der Rente', u: '€/Monat', s: 100, h: 'für die ganze Familie, in heutiger Kaufkraft · inkl. Nebenkosten fürs Wohnen, ohne Miete und Kredit (Krankenversicherung, Instandhaltung und Kindergeld rechnet der Rechner dazu)' },
     ] },
 ];
 const LAGE = LAGE_G.flatMap(g => g.f);
@@ -1385,7 +1391,7 @@ function renderLage() {
     <div class="sechead"><div><h2>Ihre Lage</h2><p class="lead">Diese Angaben genügen für eine Antwort.</p></div></div>
     ${S.example ? `<div class="exbanner" id="exBanner"><b>Beispielwerte.</b> Tragen Sie Ihre eigenen Zahlen ein oder laden Sie einen gespeicherten Plan (ganz unten „Plan importieren“). Ihre Angaben bleiben nur auf diesem Gerät.</div>` : ''}
     <div class="fields lage">${ess.map(fieldHtml).join('')}</div>
-    <details class="more lmore"${LAGE_MORE ? ' open' : ''}><summary>Mehr Angaben: Familie, Kredit, Bitcoin-Obergrenze, Ziel</summary>
+    <details class="more lmore"${LAGE_MORE ? ' open' : ''}><summary>Mehr Angaben: Familie, Kredit, Bitcoin-Obergrenze</summary>
       ${LAGE_G.map(g => { const f = g.f.filter(x => !ESSENTIAL.includes(x.k)); return f.length ? `<h3 class="grp">${g.t}</h3><div class="fields lage">${f.map(fieldHtml).join('')}</div>` : ''; }).join('')}
     </details>
     <div class="row end"><button class="primary" id="bLage">Fertig</button></div>`
@@ -1853,16 +1859,19 @@ function q1Chart() {
   // Kaufzeitpunkt
   if (S.buyHouse && S.purchaseYear >= x0 && S.purchaseYear <= x1) { const xp = X(S.purchaseYear), pp = path(S.purchaseYear).price;
     g += `<line x1="${xp}" x2="${xp}" y1="${P.t}" y2="${P.t + H}" style="stroke:var(--ink)" stroke-dasharray="3 3"/><circle cx="${xp}" cy="${Y(pp)}" r="4.5" style="fill:var(--c-btc);stroke:var(--card)" stroke-width="2"/>
-      <text x="${xp + (xp > w - 90 ? -6 : 6)}" y="${Y(pp) + 14}" text-anchor="${xp > w - 90 ? 'end' : 'start'}" style="fill:var(--ink);font-weight:600">Kauf · ${fEurS(pp)}</text>`; }
+      <text x="${xp + (xp > w - 90 ? -6 : 6)}" y="${Y(pp) + 14}" text-anchor="${xp > w - 90 ? 'end' : 'start'}" style="fill:var(--ink);font-weight:600">1 BTC ≈ ${fEurS(pp)}</text>`; }
   g += `<circle cx="${X(e.nowYear)}" cy="${Y(e.priceEur)}" r="4" style="fill:var(--ink)"/><text x="${X(e.nowYear) + 6}" y="${Y(e.priceEur) + 4}">heute</text>`;
   // Streifen: frühester Rentenstart je Kaufjahr
   const sy = P.t + H + 8, best = FINDER.res && FINDER.res.ranked[0], bestY = best && !best.noHouse ? Math.floor(best.buy + 1e-9) : null;
-  BUYROWS.forEach(x => { if (x.y < x0 || x.y >= x1) return; const x_ = X(x.y) + 1, wd = X(x.y + 1) - X(x.y) - 2;
+  const curY = Math.floor(S.purchaseYear + 1e-9);
+  BUYROWS.forEach((x, i) => { if (x.y < x0 || x.y >= x1) return; const x_ = X(x.y) + 1, wd = X(x.y + 1) - X(x.y) - 2;
     const fill = !x.r ? 'var(--red-bg)' : x.y === bestY ? 'var(--green)' : 'var(--green-bg)', tc = !x.r ? 'var(--red)' : x.y === bestY ? '#fff' : 'var(--green)';
-    g += `<rect x="${x_.toFixed(1)}" y="${sy}" width="${wd.toFixed(1)}" height="16" rx="3" style="fill:${fill}"/><text x="${(x_ + wd / 2).toFixed(1)}" y="${sy + 12}" text-anchor="middle" style="fill:${tc};font-weight:600">${x.r ? '→' + String(x.r.retire).slice(2) : '✕'}</text>`; });
+    const cell = `<rect x="${x_.toFixed(1)}" y="${sy}" width="${wd.toFixed(1)}" height="16" rx="3" style="fill:${fill}${x.y === curY ? ';stroke:var(--ink);stroke-width:1.5' : ''}"/><text x="${(x_ + wd / 2).toFixed(1)}" y="${sy + 12}" text-anchor="middle" style="fill:${tc};font-weight:600">${x.r ? '→' + String(x.r.retire).slice(2) : '✕'}</text>`;
+    // Antippen übernimmt Kauf und frühesten Rentenstart dieses Jahres
+    g += x.r && x.y !== curY ? `<g data-apply="buy:${i}" style="cursor:pointer"><title>Kauf ${x.y} → Rente ${x.r.retire}</title>${cell}</g>` : cell; });
   for (let y = Math.ceil(x0); y < x1; y += (W < 420 ? 2 : 1)) if (X(y + 0.5) < w - 14) g += `<text x="${X(y + 0.5).toFixed(1)}" y="${h - 4}" text-anchor="middle">${y}</text>`;
   return `<svg class="chart q1c" viewBox="0 0 ${w} ${h}" role="img" aria-label="Bitcoin-Kurs im Modell und frühester Rentenstart je Kaufjahr">${g}</svg>
-    <p class="note">Orange: Bitcoin-Kurs im Modell (Fall „Normal“), grau: echter Kurs, hell: Verkaufsfenster. Streifen: Kauf in diesem Jahr → frühester sicherer Rentenstart (✕ = kein sicherer Plan).</p>`;
+    <p class="note">Orange: Bitcoin-Kurs im Modell (Fall „Normal“), grau: echter Kurs, hell: Verkaufsfenster. Streifen: Kauf in diesem Jahr → frühester sicherer Rentenstart (✕ = kein sicherer Plan, antippen zum Wählen).</p>`;
 }
 function ampelHtml() {
   const R = MAIN_RUN, p = R.purchase; if (!p || S.finMode !== 'rate') return '';
@@ -1942,12 +1951,16 @@ function renderQ3() {
   bars.sort((a, b) => a.y - b.y || (a.nh ? -1 : 1));
   const col = v => v == null ? 'var(--line)' : v >= 0.9 ? 'var(--green)' : v >= 0.8 ? 'color-mix(in srgb,var(--green) 70%,var(--card))' : v >= 0.6 ? 'var(--yellow)' : 'var(--red)';
   const cost = nh ? (FR.ranked[0] && !FR.ranked[0].noHouse ? FR.ranked[0].retire : S.retireYear) - nh.retire : 0;
+  // Vermögen mit 60: Spanne aus den vielen Zukünften statt nur des Falls „Normal“ (der liegt über dem typischen Wert)
+  const mc = MC.res && MC.key === mcKey(S) ? MC.res : null, y60 = S.birthYear + 60.5;
+  const w60 = !r60 ? '' : mc ? `Vermögen mit 60 (heutige Kaufkraft): typisch ca. <b>${fR(mc.net60p50, y60)}</b>${mc.net60p10 > 0 ? `, in 9 von 10 Zukünften mindestens ${fR(mc.net60p10, y60)}` : ' – im schlechtesten Zehntel der Zukünfte ist es bis dahin aufgebraucht'}. `
+    : `Vermögen mit 60: ca. <b>${fR(r60.net, r60.y + 0.5)}</b> im Fall „Normal“ (heutige Kaufkraft). `;
   el.innerHTML = `<div class="qa">${S.retireYear} – mit ${age}</div>
     <div class="steps3">${bars.map(b => `<${b.i != null && !(b.y === S.retireYear && isRec()) ? `button data-apply="byYear:${b.i}"` : 'div'} class="st3${b.y === S.retireYear && !b.nh ? ' on' : ''}${b.nh ? ' nh' : ''}" title="${b.nh ? 'ohne Hauskauf' : 'Rente ab ' + b.y}">
         <span class="b3"><i style="height:${b.v == null ? 6 : Math.round(8 + Math.max(0, Math.min(1, (b.v - 0.4) / 0.6)) * 50)}px;background:${b.nh ? 'var(--c-tank)' : col(b.v)}"></i></span>
         <b>${b.v == null ? '…' : pct(b.v)}</b><small>${b.y}${b.nh ? ' ohne Haus' : ''}</small></${b.i != null && !(b.y === S.retireYear && isRec()) ? 'button' : 'div'}>`).join('')}</div>
     <p class="s">Säule = Sicherheit je Rentenjahr (antippen zum Wählen).${nh ? ` Ohne Hauskauf schon ${nh.retire} (mit ${nh.age})${cost > 0 ? ` – das Haus kostet ${cost} Jahr${cost > 1 ? 'e' : ''} Freiheit` : ''}.` : ''}</p>
-    <p class="s">${r60 ? `Vermögen mit 60: ca. <b>${fR(r60.net, r60.y + 0.5)}</b> (heutige Kaufkraft). ` : ''}${re ? `Zum Rentenstart bleiben ${fBtc(re.btcAfter)}.` : ''}</p>`;
+    <p class="s">${w60}${re ? `Zum Rentenstart bleiben ${fBtc(re.btcAfter)}.` : ''}</p>`;
   if (more) more.innerHTML = `<details class="more years"${YEARS_OPEN ? ' open' : ''}><summary>Vermögen Jahr für Jahr</summary>${wealthChart()}${timelineTable()}</details>`;
 }
 
@@ -1994,7 +2007,10 @@ function roadItems() {
   const R = MAIN_RUN, now = ENV.nowYear, out = [];
   if (S.buyHouse && now < S.purchaseYear - 0.25) out.push({ t: now + 0.01, cls: '', when: `Bis ${fQ(S.purchaseYear)}`, what: `Sparen und alle Bitcoin halten. Spätestens ${Math.floor(S.purchaseYear - 1)}: Herkunftsnachweis und Finanzierung vorbereiten (Checkliste).` });
   R.events.filter(e => e.y <= S.retireYear + 5 && !(e.type === 'refill' && e.y > S.retireYear + 1) && !/planmäßig abbezahlt/.test(e.txt))
-    .forEach(e => out.push({ t: e.t ?? e.y + 0.5, cls: e.type === 'retire' ? 'ret' : e.type === 'fail' ? 'fail' : e.type === 'house' ? 'house' : '', when: e.t != null ? fQ(e.t) : String(e.y), what: plainEv(e.txt) }));
+    .forEach(e => { let what = plainEv(e.txt);
+      // Tank zum Rentenstart auch in heutiger Kaufkraft – so steht er in Frage 4
+      if (e.type === 'retire' && R.retire) what = what.replace(/vom Tank leben \(([^,)]+)/, `vom Tank leben ($1 = heute ca. ${fR(R.retire.topf1, R.retire.y)}`);
+      out.push({ t: e.t ?? e.y + 0.5, cls: e.type === 'retire' ? 'ret' : e.type === 'fail' ? 'fail' : e.type === 'house' ? 'house' : '', when: e.t != null ? fQ(e.t) : String(e.y), what }); });
   out.sort((a, b) => a.t - b.t);
   const later = [...new Set(R.events.filter(e => e.type === 'refill' && e.y > S.retireYear + 1).map(e => e.y))];
   const payoff = R.events.find(e => e.type === 'loan' && /abgelöst/.test(e.txt) && !/flexibler/.test(e.txt) && e.y > S.retireYear + 5);
