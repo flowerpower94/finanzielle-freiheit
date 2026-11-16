@@ -261,6 +261,11 @@ ol.road li.now ul.steps{margin-top:6px}
 .wres .wchips{margin:4px 0 0}
 .recline{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .recline small{flex:1 1 180px} .recline b.vd{font-size:13.5px;color:var(--ink)}
+.recline.better b.vd{color:var(--green)}
+.anphead{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+#secAnswer .anphead h3.grp{margin-top:18px}
+button.linkbtn{background:none;border:0;padding:4px 0;min-height:0;color:var(--accent);font-size:13.5px;font-weight:600;cursor:pointer}
+button.linkbtn[hidden]{display:none}
 #secAnswer h3.grp{margin-top:18px}
 dl.plist{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;margin:6px 0 0;font-size:14.5px}
 dl.plist dt{color:var(--muted);font-size:13px;padding-top:1px}
@@ -272,7 +277,7 @@ table.kv td button,.tbl td button{min-height:0;padding:3px 9px;font-size:12.5px}
 .neg{color:var(--red);font-weight:600}
 .assume{margin-top:26px}
 .assume .sechead{margin:0 2px 0}
-@media (max-width:500px){ .inds{grid-template-columns:1fr} .abig{font-size:25px} .wres{flex-direction:column;align-items:stretch} .wres>button{width:100%} dl.plist{grid-template-columns:1fr;gap:0} dl.plist dd{margin-bottom:6px} }
+@media (max-width:500px){ .inds{grid-template-columns:1fr} .abig{font-size:25px} .wres{flex-direction:column;align-items:stretch} .wres>button,.recline button{width:100%} dl.plist{grid-template-columns:1fr;gap:0} dl.plist dd{margin-bottom:6px} }
 footer{margin-top:28px;font-size:12.5px;color:var(--muted)}
 footer a{color:var(--muted)}
 a{color:var(--accent)}
@@ -1695,7 +1700,8 @@ function mcBar() {
 function buildPlan() {
   document.getElementById('secAnswer').innerHTML = `<div class="sechead"><span class="num">2</span><div><h2>Ihr Plan</h2><p class="lead">Wann können Sie aufhören – und wie wollen Sie es?</p></div></div>
     <div id="ansTop"></div><div id="ansBox"></div>
-    <h3 class="grp">Anpassen</h3><div class="sliders" id="sliders"></div><div id="whatRes"></div>`;
+    <div class="anphead"><h3 class="grp">Anpassen</h3><button class="linkbtn" id="bResetPlan" data-apply="ranked:0" hidden>Regler zurücksetzen</button></div>
+    <div class="sliders" id="sliders"></div><div id="whatRes"></div>`;
   renderSliders();
 }
 function renderAnswer() {
@@ -1796,6 +1802,7 @@ function renderWhatRes() {
   const el = document.getElementById('whatRes'); if (!el || !MYPLAN) return;
   const best = FINDER.res && FINDER.res.ranked[0], same = isRec(), cur = MC.res && MC.key === mcKey(S) ? MC.res.success : null;
   const rec = MC.rec && MC.recKey === recKeyOf() ? MC.rec.success : null;
+  const rb = document.getElementById('bResetPlan'); if (rb) rb.hidden = !best || same;
   let cmp = '';
   if (best && !same) {
     // Was unterscheidet Ihre Variante von der Empfehlung?
@@ -1805,20 +1812,17 @@ function renderWhatRes() {
     else if (S.buyHouse && Math.abs(S.purchaseYear - best.buy) > 0.01) d.push(`Kauf ${fQ(S.purchaseYear)} statt ${fQ(best.buy)}`);
     if (S.buyHouse && !best.noHouse && S.finMode === 'rate' && Math.abs(rate - best.rate) >= 1) d.push(`Rate ${fEur(rate)} statt ${fEur(best.rate)}${rate > rateMaxEff() + 1 ? ' (über Ihrer Obergrenze)' : ''}`);
     if (S.finMode !== 'rate' && S.buyHouse) d.push('andere Finanzierungsregel');
-    let verdict = '', btn = 'Zur Empfehlung';
-    if (cur != null && rec != null) {
-      const later = S.retireYear - best.retire;
-      if (cur > rec + 0.005) {
-        verdict = later > 0 ? `Ihre Variante ist sicherer, dafür ${later} Jahr${later > 1 ? 'e' : ''} später in Rente.`
-          : rate > rateMaxEff() + 1 ? 'Ihre Variante ist sicherer – mit einer Rate über Ihrer Obergrenze.'
-          : 'Ihre Variante ist sicherer als die Empfehlung.';
-        btn = 'Empfehlung übernehmen';
-      } else if (cur < rec - 0.005) verdict = later < 0 ? `Die Empfehlung ist sicherer; Ihre Variante geht ${-later} Jahr${later < -1 ? 'e' : ''} früher in Rente.` : 'Die Empfehlung ist sicherer.';
-      else verdict = 'Beide sind etwa gleich sicher.';
-    }
-    const better = cur != null && rec != null && cur > rec + 0.005;
+    // Die Empfehlung wird nur angeboten, wenn sie wirklich besser ist: sicherer – oder gleich sicher und früher in Rente.
+    // Unterschiede unter 1 Prozentpunkt gelten als gleich (Rechenrauschen).
+    const yrs = n => `${n} Jahr${n > 1 ? 'e' : ''}`, later = S.retireYear - best.retire;
+    let verdict = '', cls = '', btn = '';
+    if (cur == null || rec == null) verdict = 'Sicherheit wird berechnet …';
+    else if (rec > cur + 0.01) { cls = 'worse'; verdict = later < 0 ? `Die Empfehlung ist sicherer, dafür ${yrs(-later)} später in Rente.` : 'Die Empfehlung ist sicherer.'; btn = `Zur Empfehlung (${pct(rec)})`; }
+    else if (cur > rec + 0.01) { cls = 'better'; verdict = later > 0 ? `✓ Ihre Variante ist sicherer, dafür ${yrs(later)} später in Rente.` : rate > rateMaxEff() + 1 ? '✓ Ihre Variante ist sicherer – mit einer Rate über Ihrer Obergrenze.' : '✓ Ihre Variante ist sicherer.'; }
+    else if (later > 0) { cls = 'worse'; verdict = `Gleich sicher – mit der Empfehlung aber ${yrs(later)} früher in Rente.`; btn = `Zur Empfehlung (Rente ${best.retire})`; }
+    else { cls = 'better'; verdict = later < 0 ? `✓ Gleich sicher und ${yrs(-later)} früher in Rente.` : '✓ Ihre Variante ist etwa gleich sicher.'; }
     cmp = `<div><small>Sicherheit: Ihre Variante → Empfehlung</small><b>${cur != null ? pct(cur) : '…'} → ${rec != null ? pct(rec) : '…'}</b></div>
-      <div class="recline"><small>${d.join(' · ') || 'kleine Abweichung'}${verdict ? `<br><b class="vd">${verdict}</b>` : ''}</small><button data-apply="ranked:0"${better ? '' : ' class="primary"'}>${btn}</button></div>`;
+      <div class="recline ${cls}"><small>${d.join(' · ') || 'kleine Abweichung'}<br><b class="vd">${verdict}</b></small>${btn ? `<button class="primary" data-apply="ranked:0">${btn}</button>` : ''}</div>`;
   }
   el.innerHTML = `<div class="wres">
     <div><small>Sicher in allen drei Fällen? ${help(GLOSS.welten)}</small>${wchips(MYPLAN.status)}</div>
