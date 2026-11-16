@@ -259,6 +259,8 @@ ol.road li.now ul.steps{margin-top:6px}
 .wres small{display:block;color:var(--muted);font-size:12px}
 .wres b{font-size:18px;font-variant-numeric:tabular-nums}
 .wres .wchips{margin:4px 0 0}
+.recline{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+#secAnswer h3.grp{margin-top:18px}
 dl.plist{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;margin:6px 0 0;font-size:14.5px}
 dl.plist dt{color:var(--muted);font-size:13px;padding-top:1px}
 dl.plist dd{margin:0}
@@ -979,9 +981,11 @@ const CORE = (() => {
     };
   }
   // Ergebnis: Anteil der Zukünfte, in denen das Geld bis zum Planende reicht (und Hauskauf/Bank klappen)
-  function monteCarlo(inp, env, n = 400, seed = 7, extra = {}) {
+  // Läuft in Portionen (step), damit die Seite beim Rechnen nicht stockt; monteCarlo() rechnet alles auf einmal
+  function mcRunner(inp, env, n = 400, seed = 7, extra = {}) {
     const rnd = rng(seed), out = { n, ok: 0, moneyOk: 0, calm: 0, houseIssue: 0, failAges: [], net60: [], btcRetire: [], btcHouse: [] };
-    for (let k = 0; k < n; k++) {
+    let k = 0;
+    const step = m => { const end = Math.min(n, k + m); for (; k < end; k++) {
       const s = simulate(inp, env, { ...extra, path: mcPath(inp, env, rnd) });
       // Erfolg = Kauf klappt wie geplant (Bank sagt ja, Bitcoin-Obergrenze reicht) UND das Geld reicht bis zum Planende
       const house = !!(s.bankFail || s.shortfallHouse > 0 || s.capShort > 0);
@@ -992,7 +996,8 @@ const CORE = (() => {
       if (s.failYear != null) out.failAges.push(s.failYear - inp.birthYear);
       const r60 = s.rows.find(x => x.age === 60) || s.rows[s.rows.length - 1];
       out.net60.push(r60.net); out.btcRetire.push(s.retire ? s.retire.btcAfter : 0); if (s.purchase) out.btcHouse.push(s.purchase.btcTotal);
-    }
+    } return k >= n; };
+    const result = () => {
     const q = (a, p) => { const b = a.slice().sort((x, y) => x - y); return b.length ? b[Math.min(b.length - 1, Math.floor(p * b.length))] : 0; };
     out.success = out.ok / n; out.moneyShare = out.moneyOk / n; out.calmShare = out.calm / n; out.houseShare = out.houseIssue / n;
     out.btcHouseP50 = q(out.btcHouse, 0.5); out.btcHouseP90 = q(out.btcHouse, 0.9);
@@ -1000,7 +1005,10 @@ const CORE = (() => {
     out.failAgeMedian = out.failAges.length ? q(out.failAges, 0.5) : null;
     delete out.btcHouse;
     return out;
+    };
+    return { step, result };
   }
+  function monteCarlo(inp, env, n = 400, seed = 7, extra = {}) { const r = mcRunner(inp, env, n, seed, extra); r.step(n); return r.result(); }
 
   // ---------- Signal „Was tue ich heute?“ ----------
   // Drei unabhängige Blickwinkel, je auf „letztes Zyklus-Tief = 0, letztes Zyklus-Hoch = 100“ normiert (log):
@@ -1019,7 +1027,7 @@ const CORE = (() => {
   const PL_SANTO = { A: 1.0117e-17, n: 5.82 };
 
   return { yearToMs, msToYear, daysSinceGenesis, plUsd, plGrowth, nebenkosten, ltvAdj, estimateRate, loanRateFor, rateRoom, wishRate, loanForRate, btcCapOf,
-    pricePath, scenarioMult, cycleFactor, cycleLabel, PL_FIT, PL_SANTO, WORLDS, finderGrid, evalCombo, rankFinder, evalPlan, monteCarlo, signalScore, SIG, KINDERGELD, sellWindow, halvingFor, simulate, compareStrategies, earliestRetire, stressTests, fEur, fEurS, fBtc, fPct };
+    pricePath, scenarioMult, cycleFactor, cycleLabel, PL_FIT, PL_SANTO, WORLDS, finderGrid, evalCombo, rankFinder, evalPlan, monteCarlo, mcRunner, signalScore, SIG, KINDERGELD, sellWindow, halvingFor, simulate, compareStrategies, earliestRetire, stressTests, fEur, fEurS, fBtc, fPct };
 })();
 // ===== CORE-END =====
 </script>
@@ -1360,7 +1368,7 @@ document.addEventListener('input', e => {
   const el = e.target, k = el.dataset.k;
   if (!k || el.tagName === 'SELECT' || el.type === 'checkbox') return;
   if (!setVal(k, el.value, el)) return;
-  if (SLIDERS.some(m => m.k === k)) { S.fromFinder = false; syncSliders(); }
+  if (SLIDERS.some(m => m.k === k)) { S.fromFinder = false; syncSliders(); save(); scheduleLight(); return; }
   if (S.example && LAGE.some(f => f.k === k)) { S.example = false; const b = document.getElementById('exBanner'); if (b) b.remove(); }
   save(); schedule();
 });
@@ -1368,6 +1376,7 @@ document.addEventListener('change', e => {
   const el = e.target, k = el.dataset.k;
   if (el.dataset.done) { S.done = { ...S.done, [el.dataset.done]: el.checked }; save(); const d = document.querySelector('#d5 [data-sub]'); if (d) d.textContent = CARDS.find(c => c.id === 'd5').sub(); return; }
   if (!k) return;
+  if (el.type === 'range') { lightUntil = 0; schedule(); return; }
   const isSel = el.tagName === 'SELECT' || el.type === 'checkbox';
   if (isSel) setVal(k, el.value, el);
   if (k === 'plModel' && S.plModel !== 'custom') { const m = S.plModel === 'fit' ? CORE.PL_FIT : CORE.PL_SANTO; S.plA = m.A; S.plN = m.n; }
@@ -1437,8 +1446,19 @@ document.getElementById('fImport').onchange = async e => {
   } catch (err) { const b = document.getElementById('bImport'); b.textContent = 'Datei nicht lesbar – andere wählen'; setTimeout(() => b.textContent = 'Plan importieren', 4000); }
 };
 
-let pending = false;
-function schedule() { if (pending) return; pending = true; requestAnimationFrame(() => { pending = false; recalc(); }); }
+let pending = false, pendingL = false, fullT = null, lightUntil = 0;
+function schedule() { clearTimeout(fullT); if (pending) return; pending = true; requestAnimationFrame(() => { pending = false; recalc(); }); }
+// Regler: pro Bild nur Antwort neu rechnen; alles andere (Fahrplan, Vergleiche, Sicherheit) erst nach dem Loslassen
+function scheduleLight() {
+  lightUntil = Date.now() + 500; clearTimeout(MC.timer); clearTimeout(fullT); fullT = setTimeout(schedule, 450);
+  if (pendingL) return; pendingL = true; requestAnimationFrame(() => { pendingL = false; recalcLight(); });
+}
+function recalcLight() {
+  const e = env();
+  MAIN_RUN = CORE.simulate(S, e); SCEN_RUNS.fair = MAIN_RUN; SCEN_RUNS.sup = CORE.simulate(S, e, { scen: 'sup' });
+  MYPLAN = CORE.evalPlan(S, e);
+  syncSliders(); renderAnswer(); renderWhatRes();
+}
 
 // ---------- SVG-Diagramme ----------
 function niceTicks(min, max, n = 5) {
@@ -1671,25 +1691,31 @@ function mcBar() {
   return `<div class="sbar${old ? ' old' : ''}"><div class="track"><i style="width:${p}%;background:var(--${p >= 80 ? 'green' : p >= 60 ? 'yellow' : 'red'})"></i></div><b>${p} %</b></div>
     <p class="note">In ${p} von 100 möglichen Bitcoin-Zukünften klappt der Plan: Der Hauskauf geht wie geplant, und das Geld reicht bis ${S.ageEnd}.${old ? ' (wird neu berechnet …)' : ''} ${help(GLOSS.mc)}</p>`;
 }
+function buildPlan() {
+  document.getElementById('secAnswer').innerHTML = `<div class="sechead"><span class="num">2</span><div><h2>Ihr Plan</h2><p class="lead">Wann können Sie aufhören – und wie wollen Sie es?</p></div></div>
+    <div id="ansTop"></div><div id="ansBox"></div>
+    <h3 class="grp">Anpassen</h3><div class="sliders" id="sliders"></div><div id="whatRes"></div>`;
+  renderSliders();
+}
 function renderAnswer() {
-  const el = document.getElementById('secAnswer'); if (!el) return;
+  const top = document.getElementById('ansTop'), box = document.getElementById('ansBox'); if (!top || !box) return;
   const R = MAIN_RUN, best = FINDER.res && FINDER.res.ranked[0], same = isRec(), age = S.retireYear - S.birthYear;
   const worlds = MYPLAN ? (Object.values(MYPLAN.status).includes('red') ? 'red' : Object.values(MYPLAN.status).every(s => s === 'green') ? 'green' : 'yellow') : R.status;
-  let h = `<div class="sechead"><span class="num">2</span><div><h2>Die Antwort</h2><p class="lead">Wann können Sie aufhören?</p></div></div>`;
+  let h = '';
   if (FINDER.running) h += `<div class="prog"><i id="fBar" style="width:0%"></i></div><p class="note">Der Rechner sucht den besten Plan … <span id="fProg">0 %</span></p>`;
   else if (stale()) h += '<div class="stale">Ihre Angaben haben sich geändert – der Plan wird gleich neu berechnet …</div>';
   else if (!FINDER.res) h += `<button class="primary big" id="fRun">Plan berechnen</button>`;
   else if (!best) h += `<div class="bad">Kein Plan hält in allen drei Fällen. Stellschrauben: günstigeres Haus, niedrigeres Wunsch-Netto, höhere Rate oder späterer Rentenstart.${FINDER.res.noHouse && FINDER.res.noHouse.retire ? ` Ohne Hauskauf wäre ein sicherer Ausstieg ${FINDER.res.noHouse.retire} (Alter ${FINDER.res.noHouse.age}) möglich.` : ''}</div>`;
+  top.innerHTML = h; h = '';
   h += `<div class="answer ${worlds}">
       <small>${same ? 'Empfohlener Plan' : best ? 'Ihre Variante' : 'Ihr Plan'} · Beträge im Fall „Normal“</small>
       <div class="abig">Rente ab ${S.retireYear} – mit ${age}</div>
       ${planRows(R)}
       ${mcBar()}
     </div>`;
-  if (!same && best && !FINDER.running) h += `<div class="row"><span class="note">Empfehlung: Rente ab ${best.retire} (mit ${best.age})${best.noHouse ? ' ohne Hauskauf' : `, Haus ${fQ(best.buy)}, Rate ${best.rate > 0 ? fEur(best.rate) : '0 €'}`}${MC.rec ? ` · Sicherheit ${pct(MC.rec.success)}` : ''}</span><button data-apply="ranked:0">Zur Empfehlung</button></div>`;
   if (R.status === 'red') h += `<div class="bad">${R.reasons[0]}</div>`;
   else if (R.flags.length) h += `<div class="flags">${R.flags.map(f => `<span class="fl s${f.sev}" title="${f.text}">${f.sev >= 3 ? '✕' : f.sev === 2 ? '!' : 'i'} ${f.short}</span>`).join('')}</div>`;
-  el.innerHTML = h;
+  box.innerHTML = h;
 }
 
 // ---------- ③ Ihr Fahrplan ----------
@@ -1762,24 +1788,24 @@ function renderRoad() {
 
 // ---------- ④ Was wäre, wenn …? ----------
 function buildWhat() {
-  document.getElementById('secWhat').innerHTML = `<div class="sechead"><span class="num">4</span><div><h2>Was wäre, wenn …?</h2><p class="lead">Und wenn Sie es anders machen? Schieben Sie Kauf, Rate und Rentenstart.</p></div></div>
-    <div class="sliders" id="sliders"></div><div id="whatRes"></div><div id="kvar"></div><div id="byYear"></div><div id="whatif"></div>`;
-  renderSliders();
+  document.getElementById('secWhat').innerHTML = `<div class="sechead"><span class="num">4</span><div><h2>Varianten vergleichen</h2><p class="lead">Was ändert sich, wenn Sie anders entscheiden?</p></div></div>
+    <div id="kvar"></div><div id="byYear"></div><div id="whatif"></div>`;
 }
 function renderWhatRes() {
   const el = document.getElementById('whatRes'); if (!el || !MYPLAN) return;
   const best = FINDER.res && FINDER.res.ranked[0], same = isRec(), cur = MC.res && MC.key === mcKey(S) ? MC.res.success : null;
   el.innerHTML = `<div class="wres">
     <div><small>Sicher in allen drei Fällen? ${help(GLOSS.welten)}</small>${wchips(MYPLAN.status)}</div>
-    <div><small>Sicherheit</small><b>${best && !same && MC.rec ? `${pct(MC.rec.success)} → ` : ''}${cur != null ? pct(cur) : '…'}</b></div>
-    ${best ? (same ? '<span class="good tag">= Empfehlung</span>' : '<button data-apply="ranked:0">Zur Empfehlung</button>') : ''}</div>`;
+    ${best && !same ? `<div><small>Sicherheit: Empfehlung → Ihre Variante</small><b>${MC.rec ? pct(MC.rec.success) : '…'} → ${cur != null ? pct(cur) : '…'}</b></div>
+      <div class="recline"><small>Empfehlung: Rente ${best.retire}${best.noHouse ? ' ohne Haus' : `, Haus ${fQ(best.buy)}, Rate ${best.rate > 0 ? fEur(best.rate) : '0 €'}`}</small><button data-apply="ranked:0">Zur Empfehlung</button></div>`
+      : best ? '<span class="good tag">= Empfehlung</span>' : ''}</div>`;
 }
 const kvRates = () => { const m = rateMaxEff(); return [...new Set([0, 0.25, 0.5, 0.75, 1].map(f => Math.round(f * m / 50) * 50))]; };
 const kvKey = () => mcKey({ ...S, loanRate: 0 });
 function renderKvar() {
   const el = document.getElementById('kvar'); if (!el) return;
   if (!S.buyHouse || S.finMode !== 'rate') { el.innerHTML = ''; return; }
-  const e = env(), cur = CORE.wishRate(S, e), kvOk = MC.kv && MC.kvKey === kvKey();
+  const e = env(), cur = CORE.wishRate(S, e), kvOk = MC.kv && (MC.kvKey === kvKey() || MC.running);
   const rows = kvRates().map(r => ({ r, a: CORE.simulate({ ...S, loanRate: r }, e, { scen: 'fair' }), b: CORE.simulate({ ...S, loanRate: r }, e, { scen: 'sup' }) }));
   el.innerHTML = `<h3>Bitcoin oder Kredit? ${help(GLOSS.kvar)}</h3>
     <p class="note">Gleicher Kauf und Rentenstart, nur die Kreditrate ändert sich. Bitcoin füllen jeweils nur den Rest auf (höchstens ${fBtc(CORE.btcCapOf(S))}).</p>
@@ -1872,7 +1898,7 @@ function nextSteps(st, zone) {
   return out;
 }
 // ===================== Monte-Carlo: Wie sicher ist der Plan? =====================
-const MC = { key: null, res: null, rec: null, recKey: null, tax: null, kv: null, kvKey: null, by: null, byKey: null, timer: null, whatif: {} };
+const MC = { key: null, res: null, rec: null, recKey: null, tax: null, kv: null, kvKey: null, by: null, byKey: null, timer: null, whatif: {}, running: false, again: false };
 const MC_N = 400;
 const tick = () => new Promise(r => setTimeout(r, 0));
 function mcKey(inp) { const o = { ...inp }; ['scenario', 'realView', 'expert', 'theme', 'prevPlan', 'fromFinder', 'planBase', 'checkins', 'done', 'finderGoal', 'finderTarget', 'finderBuyFrom', 'finderBuyTo', 'lageOpen', '_v'].forEach(k => delete o[k]); return JSON.stringify(o) + '|' + Math.round(env().priceEur / 1000); }
@@ -1882,36 +1908,53 @@ const byKeyOf = () => mcKey({ ...S, purchaseYear: 0, loanRate: 0, retireYear: 0,
 const needMC = () => MC.key !== mcKey(S) || MC.recKey !== recKeyOf() || (S.buyHouse && S.finMode === 'rate' && MC.kvKey !== kvKey()) || (FINDER.res && FINDER.res.byYear && FINDER.res.byYear.length > 0 && MC.byKey !== byKeyOf());
 function scheduleMC() {
   if (!needMC()) return;
-  clearTimeout(MC.timer); MC.timer = setTimeout(runMC, 600);
+  clearTimeout(MC.timer); MC.timer = setTimeout(runMC, Math.max(600, lightUntil - Date.now() + 300));
 }
 const renderMCAll = () => { renderAnswer(); renderWhatRes(); renderSafe(); renderWhatif(); };
+// Monte-Carlo in Portionen à 25 Zukünfte: die Seite bleibt bedienbar; bei neuer Eingabe wird abgebrochen (null)
+async function mcAsync(inp, e, n, extra, still) {
+  const r = CORE.mcRunner(inp, e, n, 7, extra || {});
+  while (!r.step(25)) { await tick(); if (!still() || Date.now() < lightUntil) return null; }
+  return r.result();
+}
 // Rechnet nur, was veraltet ist: Hauptplan → Steuerfall → Empfehlung → Bitcoin oder Kredit → spätere Rentenjahre
 async function runMC() {
-  const key = mcKey(S), e = env(), gone = () => mcKey(S) !== key;
-  await tick(); if (gone()) return;
+  if (MC.running) { MC.again = true; return; }
+  MC.running = true;
+  try { await runMCInner(); } finally { MC.running = false; if (MC.again) { MC.again = false; scheduleMC(); } }
+}
+async function runMCInner() {
+  const key = mcKey(S), e = env(), still = () => mcKey(S) === key;
   if (MC.key !== key) {
-    MC.res = CORE.monteCarlo(S, e, MC_N); MC.key = key; MC.whatif = {}; MC.tax = null;
-    renderMCAll(); await tick(); if (gone()) return;
+    const res = await mcAsync(S, e, MC_N, null, still); if (!res) return void (MC.again = true);
+    MC.res = res; MC.key = key; MC.whatif = {}; MC.tax = null;
+    renderMCAll();
     // dieselben Zukünfte, falls die Steuerfreiheit nach 1 Jahr ganz wegfällt (nur nötig, solange sie im Plan noch gilt)
-    MC.tax = (S.taxRegime || 'keep') !== 'abolish' ? CORE.monteCarlo(S, e, MC_N, 7, { taxAllFrom: S.taxChangeYear || 2027, grandfather: false }) : null;
+    if ((S.taxRegime || 'keep') !== 'abolish') { const t = await mcAsync(S, e, MC_N, { taxAllFrom: S.taxChangeYear || 2027, grandfather: false }, still); if (!t) return void (MC.again = true); MC.tax = t; }
     renderSafe();
   }
   if (MC.recKey !== recKeyOf()) {
-    await tick(); if (gone()) return;
-    const best = FINDER.res && FINDER.res.ranked[0];
-    MC.rec = best ? (isRec() ? MC.res : CORE.monteCarlo(planInp(best), e, MC_N)) : null; MC.recKey = recKeyOf();
-    renderMCAll();
+    const best = FINDER.res && FINDER.res.ranked[0], rk = recKeyOf();
+    let rec = null;
+    if (best) { rec = isRec() ? MC.res : await mcAsync(planInp(best), e, MC_N, null, still); if (!rec) return void (MC.again = true); }
+    MC.rec = rec; MC.recKey = rk; renderMCAll();
   }
   // Bitcoin oder Kredit: Sicherheit je Rate, mit denselben Zukünften
   if (S.buyHouse && S.finMode === 'rate' && MC.kvKey !== kvKey()) {
-    MC.kv = {}; MC.kvKey = kvKey();
-    for (const r of kvRates()) { await tick(); if (gone()) { MC.kvKey = null; return; } MC.kv[r] = Math.abs(r - CORE.wishRate(S, e)) < 1 ? MC.res.success : CORE.monteCarlo({ ...S, loanRate: r }, e, MC_N).success; renderKvar(); }
+    const kk = kvKey(), kv = {}; MC.kv = kv; MC.kvKey = null;
+    for (const r of kvRates()) {
+      const v = Math.abs(r - CORE.wishRate(S, e)) < 1 ? MC.res : await mcAsync({ ...S, loanRate: r }, e, MC_N, null, still);
+      if (!v) return void (MC.again = true);
+      kv[r] = v.success; if (kvKey() === kk) { MC.kvKey = kk; renderKvar(); MC.kvKey = null; }
+    }
+    MC.kvKey = kk; renderKvar();
   }
   // Später in Rente: Sicherheit je Rentenjahr
   const by = FINDER.res && FINDER.res.byYear;
   if (by && by.length && MC.byKey !== byKeyOf()) {
-    MC.by = {}; MC.byKey = byKeyOf();
-    for (const r of by) { await tick(); if (gone()) { MC.byKey = null; return; } MC.by[r.retire] = CORE.monteCarlo(planInp(r), e, MC_N).success; renderByYear(); }
+    const bk = byKeyOf(), res = {}; MC.by = res;
+    for (const r of by) { const v = await mcAsync(planInp(r), e, MC_N, null, still); if (!v) return void (MC.again = true); res[r.retire] = v.success; renderByYear(); }
+    MC.byKey = bk;
   }
 }
 const WHATIF = () => [
@@ -1923,7 +1966,8 @@ const WHATIF = () => [
 function runWhatIf(id) {
   const w = WHATIF().find(x => x.id === id); if (!w) return;
   const b = document.querySelector(`[data-whatif="${id}"]`); if (b) b.innerHTML = w.l + ' → …';
-  setTimeout(() => { MC.whatif[id] = Math.round(CORE.monteCarlo({ ...S, ...w.o }, env(), MC_N).success * 100); renderWhatif(); }, 30);
+  const key = mcKey(S);
+  mcAsync({ ...S, ...w.o }, env(), MC_N, null, () => mcKey(S) === key).then(r => { if (r) { MC.whatif[id] = Math.round(r.success * 100); renderWhatif(); } });
 }
 
 // ===================== Strategie-Suche =====================
@@ -2009,7 +2053,7 @@ function applyTheme() {
 }
 try { matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if (S.theme === 'auto') { applyTheme(); recalc(); } }); } catch (e) {}
 
-function buildAll() { applyTheme(); renderLage(); buildWhat(); buildSteps(); recalc(); }
+function buildAll() { applyTheme(); renderLage(); buildPlan(); buildWhat(); buildSteps(); recalc(); }
 buildAll();
 fetchLive().finally(() => maybeAutoRun(true));
 // Als App installierbar und offline nutzbar (nur auf einer Webseite, nicht als lokale Datei)
