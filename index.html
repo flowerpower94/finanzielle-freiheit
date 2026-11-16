@@ -1731,7 +1731,7 @@ function buildPlan() {
   document.getElementById('secAnswer').innerHTML = `<div class="sechead"><span class="num">2</span><div><h2>Ihr Plan</h2><p class="lead">Wann können Sie aufhören – und wie wollen Sie es?</p></div></div>
     <div id="ansTop"></div><div id="ansBox"></div>
     <div class="anphead"><h3 class="grp">Anpassen</h3><button class="linkbtn" id="bResetPlan" data-apply="ranked:0" hidden>Regler zurücksetzen</button></div>
-    <div class="sliders" id="sliders"></div><div id="whatRes"></div>`;
+    <div class="sliders" id="sliders"></div>`;
   renderSliders();
 }
 function renderAnswer() {
@@ -1745,7 +1745,7 @@ function renderAnswer() {
   else if (!best) h += `<div class="bad">Kein Plan hält in allen drei Fällen. Stellschrauben: günstigeres Haus, niedrigeres Wunsch-Netto, höhere Rate oder späterer Rentenstart.${FINDER.res.noHouse && FINDER.res.noHouse.retire ? ` Ohne Hauskauf wäre ein sicherer Ausstieg ${FINDER.res.noHouse.retire} (Alter ${FINDER.res.noHouse.age}) möglich.` : ''}</div>`;
   top.innerHTML = h; h = '';
   h += `<div class="answer ${worlds}">
-      <small>${same ? 'Empfohlener Plan' : best ? 'Ihre Variante' : 'Ihr Plan'} · Beträge im Fall „Normal“</small>
+      <small>${same ? 'Empfohlener Plan' : best ? `Ihre Variante · Empfehlung: Rente ${best.retire}${MC.rec && MC.recKey === recKeyOf() ? ` mit ${pct(MC.rec.success)}` : ''}` : 'Ihr Plan'}</small>
       <div class="abig">Rente ab ${S.retireYear} – mit ${age}</div>
       ${planRows(R)}
       ${mcBar()}
@@ -1830,32 +1830,8 @@ function buildWhat() {
     <div id="kvar"></div><div id="byYear"></div><div id="whatif"></div>`;
 }
 function renderWhatRes() {
-  const el = document.getElementById('whatRes'); if (!el || !MYPLAN) return;
-  const best = FINDER.res && FINDER.res.ranked[0], same = isRec(), cur = MC.res && MC.key === mcKey(S) ? MC.res.success : null;
-  const rec = MC.rec && MC.recKey === recKeyOf() ? MC.rec.success : null;
-  const rb = document.getElementById('bResetPlan'); if (rb) rb.hidden = !best || same;
-  let cmp = '';
-  if (best && !same) {
-    // Was unterscheidet Ihre Variante von der Empfehlung?
-    const d = [], rate = CORE.wishRate(S, env());
-    if (S.retireYear !== best.retire) d.push(`Rente ${S.retireYear} statt ${best.retire}`);
-    if (!!best.noHouse !== !S.buyHouse) d.push(S.buyHouse ? 'mit Hauskauf' : 'ohne Hauskauf');
-    else if (S.buyHouse && Math.abs(S.purchaseYear - best.buy) > 0.01) d.push(`Kauf ${fQ(S.purchaseYear)} statt ${fQ(best.buy)}`);
-    if (S.buyHouse && !best.noHouse && S.finMode === 'rate' && Math.abs(rate - best.rate) >= 1) d.push(`Rate ${fEur(rate)} statt ${fEur(best.rate)}${rate > rateMaxEff() + 1 ? ' (über Ihrer Obergrenze)' : ''}`);
-    if (S.finMode !== 'rate' && S.buyHouse) d.push('andere Finanzierungsregel');
-    // Die Empfehlung wird nur angeboten, wenn sie wirklich besser ist: sicherer – oder gleich sicher und früher in Rente.
-    // Unterschiede unter 1 Prozentpunkt gelten als gleich (Rechenrauschen).
-    const yrs = n => `${n} Jahr${n > 1 ? 'e' : ''}`, later = S.retireYear - best.retire;
-    let verdict = '', cls = '', btn = '';
-    if (cur == null || rec == null) verdict = 'Sicherheit wird berechnet …';
-    else if (rec > cur + 0.01) { cls = 'worse'; verdict = later < 0 ? `Die Empfehlung ist sicherer, dafür ${yrs(-later)} später in Rente.` : 'Die Empfehlung ist sicherer.'; btn = `Zur Empfehlung (${pct(rec)})`; }
-    else if (cur > rec + 0.01) { cls = 'better'; verdict = later > 0 ? `✓ Ihre Variante ist sicherer, dafür ${yrs(later)} später in Rente.` : rate > rateMaxEff() + 1 ? '✓ Ihre Variante ist sicherer – mit einer Rate über Ihrer Obergrenze.' : '✓ Ihre Variante ist sicherer.'; }
-    else if (later > 0) { cls = 'worse'; verdict = `Gleich sicher – mit der Empfehlung aber ${yrs(later)} früher in Rente.`; btn = `Zur Empfehlung (Rente ${best.retire})`; }
-    else { cls = 'better'; verdict = later < 0 ? `✓ Gleich sicher und ${yrs(-later)} früher in Rente.` : '✓ Ihre Variante ist etwa gleich sicher.'; }
-    cmp = `<div><small>Sicherheit: Ihre Variante → Empfehlung</small><b>${cur != null ? pct(cur) : '…'} → ${rec != null ? pct(rec) : '…'}</b></div>
-      <div class="recline ${cls}"><small>${d.join(' · ') || 'kleine Abweichung'}<br><b class="vd">${verdict}</b></small>${btn ? `<button class="primary" data-apply="ranked:0">${btn}</button>` : ''}</div>`;
-  }
-  el.innerHTML = best && !same ? `<div class="wres">${cmp}</div>` : best ? '<p class="note okline">✓ Das ist der empfohlene Plan: der früheste Rentenstart, der in allen Prüffällen hält.</p>' : '';
+  const best = FINDER.res && FINDER.res.ranked[0], rb = document.getElementById('bResetPlan');
+  if (rb) rb.hidden = !best || isRec();
 }
 const kvRates = () => { const m = rateMaxEff(); return [...new Set([0, 0.25, 0.5, 0.75, 1].map(f => Math.round(f * m / 50) * 50))]; };
 const kvKey = () => mcKey({ ...S, loanRate: 0 });
