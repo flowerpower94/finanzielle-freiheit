@@ -1745,7 +1745,7 @@ function renderAnswer() {
   else if (!best) h += `<div class="bad">Kein Plan hält in allen drei Fällen. Stellschrauben: günstigeres Haus, niedrigeres Wunsch-Netto, höhere Rate oder späterer Rentenstart.${FINDER.res.noHouse && FINDER.res.noHouse.retire ? ` Ohne Hauskauf wäre ein sicherer Ausstieg ${FINDER.res.noHouse.retire} (Alter ${FINDER.res.noHouse.age}) möglich.` : ''}</div>`;
   top.innerHTML = h; h = '';
   h += `<div class="answer ${worlds}">
-      <small>${same ? 'Empfohlener Plan' : best ? `Ihre Variante · Empfehlung: Rente ${best.retire}${MC.rec && MC.recKey === recKeyOf() ? ` mit ${pct(MC.rec.success)}` : ''}` : 'Ihr Plan'}</small>
+      <small>${same ? 'Empfohlener Plan' : best ? `Ihre Variante · Ausgangspunkt: Empfehlung – ${best.noHouse ? 'kein Hauskauf' : `Kauf ${fQ(best.buy)} · Rate ${best.rate > 0 ? fEur(best.rate) : '0 €'}`} · Rente ${best.retire}${MC.rec && MC.recKey === recKeyOf() ? ` · ${pct(MC.rec.success)}` : ''}` : 'Ihr Plan'}</small>
       <div class="abig">Rente ab ${S.retireYear} – mit ${age}</div>
       ${planRows(R)}
       ${mcBar()}
