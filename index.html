@@ -1468,7 +1468,7 @@ function recalcLight() {
   const e = env();
   MAIN_RUN = CORE.simulate(S, e); SCEN_RUNS.fair = MAIN_RUN; SCEN_RUNS.sup = CORE.simulate(S, e, { scen: 'sup' });
   MYPLAN = CORE.evalPlan(S, e);
-  syncSliders(); renderAnswer(); renderWhatRes();
+  syncSliders(); renderAnswer();
 }
 
 // ---------- SVG-Diagramme ----------
@@ -1666,7 +1666,7 @@ function recalc() {
 
   document.querySelectorAll('[data-gsum]').forEach(el => { const g = LAGE_G.find(x => x.id === el.dataset.gsum); if (g) el.textContent = g.sum(); });
   refreshHints(); syncSliders();
-  renderAnswer(); renderRoad(); renderWhatRes(); renderKvar(); renderByYear(); renderWhatif(); renderSafe();
+  renderAnswer(); renderRoad(); renderKvar(); renderByYear(); renderWhatif(); renderSafe();
   scheduleMC();
   CARDS.forEach(c => {
     const d = document.getElementById(c.id); if (!d) return;
@@ -1730,7 +1730,7 @@ function mcBar() {
 function buildPlan() {
   document.getElementById('secAnswer').innerHTML = `<div class="sechead"><span class="num">2</span><div><h2>Ihr Plan</h2><p class="lead">Wann können Sie aufhören – und wie wollen Sie es?</p></div></div>
     <div id="ansTop"></div><div id="ansBox"></div>
-    <div class="anphead"><h3 class="grp">Anpassen</h3><button class="linkbtn" id="bResetPlan" data-apply="ranked:0" hidden>Regler zurücksetzen</button></div>
+    <h3 class="grp">Anpassen</h3>
     <div class="sliders" id="sliders"></div>`;
   renderSliders();
 }
@@ -1828,10 +1828,6 @@ function renderRoad() {
 function buildWhat() {
   document.getElementById('secWhat').innerHTML = `<div class="sechead"><span class="num">4</span><div><h2>Varianten vergleichen</h2><p class="lead">Was ändert sich, wenn Sie anders entscheiden?</p></div></div>
     <div id="kvar"></div><div id="byYear"></div><div id="whatif"></div>`;
-}
-function renderWhatRes() {
-  const best = FINDER.res && FINDER.res.ranked[0], rb = document.getElementById('bResetPlan');
-  if (rb) rb.hidden = !best || isRec();
 }
 const kvRates = () => { const m = rateMaxEff(); return [...new Set([0, 0.25, 0.5, 0.75, 1].map(f => Math.round(f * m / 50) * 50))]; };
 const kvKey = () => mcKey({ ...S, loanRate: 0 });
@@ -1943,7 +1939,7 @@ function scheduleMC() {
   if (!needMC()) return;
   clearTimeout(MC.timer); MC.timer = setTimeout(runMC, Math.max(600, lightUntil - Date.now() + 300));
 }
-const renderMCAll = () => { renderAnswer(); renderWhatRes(); renderSafe(); renderWhatif(); };
+const renderMCAll = () => { renderAnswer(); renderSafe(); renderWhatif(); };
 // Monte-Carlo in Portionen à 25 Zukünfte: die Seite bleibt bedienbar; bei neuer Eingabe wird abgebrochen (null)
 async function mcAsync(inp, e, n, extra, still) {
   const r = CORE.mcRunner(inp, e, n, 7, extra || {});
