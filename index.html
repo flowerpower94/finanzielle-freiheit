@@ -1878,7 +1878,8 @@ function ampelHtml() {
   const saved = p.cashUsed - (p.preCash || 0), loanBase = p.loanAmt - (R.capShort || 0), btcEur = Math.max(0, p.total - saved - loanBase), cap = CORE.btcCapOf(S);
   if (btcEur < 1) return `<div class="amp ok"><b>Kauf-Ampel: grün.</b> Kredit und Erspartes reichen – keine Bitcoin nötig.</div>`;
   const minP = btcEur / cap, ok = p.price >= minP * 1.15, mid = p.price >= minP;
-  return `<div class="amp ${ok ? 'ok' : mid ? 'mid' : 'bad'}"><b>Kauf-Ampel:</b> kaufen, wenn 1 BTC mindestens <b>${fEurS(minP)}</b> wert ist – sonst warten. ${help(GLOSS.ampel)}
+  return `<div class="amp ${ok ? 'ok' : mid ? 'mid' : 'bad'}"><b>Kauf-Ampel:</b> Das Haus kaufen, wenn 1 Bitcoin zum Kaufzeitpunkt mindestens <b>${fEurS(minP)}</b> wert ist – sonst mit dem Hauskauf warten. ${help(GLOSS.ampel)}
+    <span class="note">Warum: Nach Kredit und Erspartem fehlen ca. ${fEurS(btcEur)}. Die sollen höchstens ${fBtc(cap)} decken (Ihre Obergrenze) – ${fEurS(btcEur)} ÷ ${nf(cap, 2)} = ${fEurS(minP)} je Bitcoin.</span>
     <span class="note">Heute ${fEurS(env().priceEur)} · im Modell zum Kauf ${fEurS(p.price)}.</span></div>`;
 }
 function renderQ1() {
@@ -1977,7 +1978,7 @@ function renderQ4() {
   if (!bad.length) add(true, 'Hält auch bei Crash (−75 % zum Rentenstart), schwachem Bitcoin, flacherem Trend, ohne Zyklus, höheren Zinsen, Inflation und starkem Euro');
   else bad.forEach(t => add(false, `Hält nicht: ${t.name}`));
   if (MC.tax && r) add(MC.tax.success >= r.success - 0.03, `Fällt die Steuerfreiheit nach 1 Jahr weg: Sicherheit <b>${pct(MC.tax.success)}</b> ${help(GLOSS.steuer)}`);
-  if (r && r.houseShare > 0.1 && S.buyHouse) add(false, `In ${pct(r.houseShare)} der Zukünfte steht Bitcoin beim Kauf unter der Kauf-Ampel – dann warten oder die Rate erhöhen`);
+  if (r && r.houseShare > 0.1 && S.buyHouse) add(false, `In ${pct(r.houseShare)} der Zukünfte steht Bitcoin beim Kauf unter der Kauf-Ampel – dann mit dem Hauskauf warten oder die Rate erhöhen`);
   const cps = []; if (S.buyHouse && S.purchaseYear > ENV.nowYear + 0.5) { const wv = CORE.sellWindow(ENV.nowYear); if (wv.end < S.purchaseYear) cps.push(fMonth(wv.end)); cps.push(qWord(S.purchaseYear - 1)); }
   if (cps.length) add(null, `Kontrollpunkte: ${cps.join(' und ')} – Kauf-Ampel prüfen und den Rechner neu öffnen`);
   const items = checklistItems(), done = items.filter(i => S.done[i.id]).length;
