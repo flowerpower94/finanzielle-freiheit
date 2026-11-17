@@ -1432,8 +1432,8 @@ const CARDS = [
   { id: 'd4', t: 'Steuer und Krankenversicherung', sub: () => `${(S.taxRegime || 'keep') === 'keep' ? 'Bitcoin nach 1 Jahr steuerfrei' : 'Steuerfreiheit fällt ' + S.taxChangeYear + ' weg'} · KV ${fEur(S.kv)}/Monat`,
     ex: `${GLOSS.steuer} Krankenversicherung: freiwillig gesetzlich 2026 mind. ca. 270 €, höchstens ca. 1.230 € im Monat (inkl. Pflege).`,
     fields: [
-      { k: 'kv', l: 'Krankenversicherung (Haushalt)', u: '€/Monat', s: 10, h: 'Angerechnet werden u. a. Zinsen und ETF-Erträge, Bitcoin-Gewinne nach 1 Jahr in der Regel nicht. Kinder und Partner/in (eigenes Einkommen bis 565 €) meist beitragsfrei mitversichert – mit der Kasse klären' },
-      { k: 'kvFamily', l: 'Solange Partner/in arbeitet: über sie/ihn familienversichert', t: 'chk', show: () => S.partnerNet > 0 },
+      { k: 'kv', l: 'Krankenversicherung (Haushalt)', u: '€/Monat', s: 10, h: 'Summe für alle: Ihr eigener Beitrag plus private Beiträge von Partner/in und Kindern. Angerechnet werden u. a. Zinsen und ETF-Erträge, Bitcoin-Gewinne nach 1 Jahr in der Regel nicht. Ist Ihr/e Partner/in privat versichert (z. B. verbeamtet), zählt die Kasse bis zur Hälfte ihres/seines Einkommens bei Ihnen mit. Kinder und Partner/in (eigenes Einkommen bis 565 €) sind nur beitragsfrei mitversichert, wenn Sie gesetzlich versichert sind – mit der Kasse klären' },
+      { k: 'kvFamily', l: 'Solange Partner/in arbeitet: über sie/ihn familienversichert (nur möglich, wenn sie/er gesetzlich versichert ist)', t: 'chk', show: () => S.partnerNet > 0 },
       { k: 'taxRegime', l: 'Steuerfreiheit nach 1 Jahr Haltedauer', t: 'sel', o: [['keep', 'bleibt (heutiges Recht)'], ['grandfather', 'fällt weg – bisherige Bitcoin bleiben steuerfrei'], ['abolish', 'fällt ganz weg']] },
       { k: 'taxChangeYear', l: 'Steueränderung ab', u: 'Jahr', s: 1, show: () => S.taxRegime && S.taxRegime !== 'keep' },
       { k: 'taxFreeFrom', l: 'Bitcoin steuerfrei ab', t: 'date', x: 1 },
