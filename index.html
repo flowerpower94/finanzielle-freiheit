@@ -1001,6 +1001,64 @@ const CORE = (() => {
     return ok.filter(r => { const k = `${r.noHouse ? 'x' : r.buy}|${r.rate}|${r.retire}`; if (seen.has(k)) return false; seen.add(k); return true; });
   }
 
+  // ===== Empfehlung nach Monte-Carlo-Sicherheit (seit v24) =====
+  // Gesucht: das früheste Rentenjahr, in dem ein Kaufzeitpunkt mindestens o.target (80 %) Sicherheit erreicht.
+  // Die drei festen Kurswelten allein waren zu ungenau (Empfehlungen mit nur 50–60 % Sicherheit).
+  // Generator: liefert zwischendurch { p } (Fortschritt) und am Ende das Ergebnis – die App rechnet so in Portionen, Tests am Stück.
+  // Kandidaten je Rentenjahr: Kauf in Halbjahresschritten von spätestens (Bank: mindestens minWorkAfterBuy Jahre Arbeit)
+  // bis 4 Jahre davor; kurze Vorprüfung mit nScreen Zukünften, Feinsuche ±1 Quartal, dann Bestätigung mit n Zukünften.
+  function* recSearch(inp, env, o) {
+    const T = o.target ?? 0.8, n = o.n ?? 400, nS = o.nScreen ?? 100, seed = o.seed ?? 7, mw = inp.minWorkAfterBuy ?? 1;
+    const base = { ...inp, priceBasis: 'heute', finMode: 'rate' };
+    const q0 = Math.ceil(env.nowYear * 4 + 0.01) / 4, bLo = Math.max(q0, o.buyFrom), bHi = o.buyTo;
+    const plan = (b, y, tank) => b == null ? { ...base, buyHouse: false, loanRate: 0, tankMode: tank, retireYear: y, payoffYear: y }
+      : { ...base, buyHouse: true, purchaseYear: b, tankMode: tank, retireYear: y, payoffYear: y };
+    function* mc(x, nn) { const r = mcRunner(x, env, nn, seed); while (!r.step(25)) yield null; return r.result().success; }
+    // „Normal“ (fester Kurspfad) muss halten – sonst ist das Jahr aussichtslos und braucht keine Monte-Carlo-Rechnung
+    const normalOk = x => simulate(x, env, { scen: 'fair' }).status !== 'red';
+    const years = []; for (let y = o.retFrom; y <= o.retTo; y++) years.push(y);
+    let best = null, seen = 0;
+    const done = (r, y) => ({ ...r, retire: y, age: y - inp.birthYear, reached: r.mc >= T });
+    for (const y of years) {
+      yield { p: (y - o.retFrom) / Math.max(1, o.retTo - o.retFrom) };
+      if (o.noHouse) {
+        const x = plan(null, y, inp.tankMode); if (!normalOk(x)) continue; seen++;
+        const s = yield* mc(x, nS);
+        if (s < T - 0.08) { if (!best || s > best.mc) best = { noHouse: true, buy: null, rate: 0, tank: inp.tankMode, mc: s, retire: y, screen: true }; }
+        else {
+          const v = yield* mc(x, n), r = { noHouse: true, buy: null, rate: 0, tank: inp.tankMode, mc: v };
+          if (v >= T) return done(r, y);
+          if (!best || best.screen || v > best.mc) best = { ...r, retire: y };
+        }
+        if (seen > 12) break; continue;
+      }
+      const hi = Math.floor(Math.min(bHi, y - mw) * 4 + 1e-6) / 4; if (hi < bLo) continue;
+      const cands = []; for (let b = hi; b >= Math.max(bLo, hi - 4) - 1e-9; b -= 0.5) cands.push(+b.toFixed(2));
+      const live = cands.filter(b => normalOk(plan(b, y, 'top'))); if (!live.length) continue; seen++;
+      const sc = new Map();
+      for (const b of live) sc.set(b, yield* mc(plan(b, y, 'top'), nS));
+      const top = [...sc.entries()].sort((a, b) => b[1] - a[1])[0][0];
+      for (const b of [top - 0.25, top + 0.25]) if (b >= bLo - 1e-9 && b <= hi + 1e-9 && !sc.has(b)) sc.set(b, yield* mc(plan(b, y, 'top'), nS));
+      const ranked = [...sc.entries()].sort((a, b) => b[1] - a[1]);
+      if (ranked[0][1] < T - 0.08) { if (!best || ranked[0][1] > best.mc) best = { buy: ranked[0][0], tank: 'top', mc: ranked[0][1], retire: y, screen: true }; if (seen > 12) break; continue; }
+      // Bestätigen: die zwei besten Kaufzeitpunkte, jeweils beide Tank-Varianten nur wenn knapp
+      for (const [b] of ranked.slice(0, 2)) {
+        let v = yield* mc(plan(b, y, 'top'), n), tank = 'top';
+        if (v < T && v >= T - 0.04) { const w = yield* mc(plan(b, y, 'retire'), n); if (w > v) { v = w; tank = 'retire'; } }
+        const r = { buy: b, rate: wishRate(plan(b, y, tank), env), tank, mc: v };
+        if (v >= T) return done(r, y);
+        if (!best || best.screen || v > best.mc) best = { ...r, retire: y };
+      }
+      if (seen > 12) break;
+    }
+    if (!best) return null;
+    // Ziel nicht erreicht: bestes gefundenes Ergebnis ehrlich mit seiner Sicherheit zurückgeben (Vorprüfwert notfalls bestätigen)
+    if (best.screen) { const x = best.noHouse ? plan(null, best.retire, best.tank) : plan(best.buy, best.retire, best.tank); best.mc = yield* mc(x, n); best.rate = best.noHouse ? 0 : wishRate(x, env); delete best.screen; }
+    return done(best, best.retire);
+  }
+  // Generator am Stück ausführen (Tests, Node)
+  function runGen(g) { let r; do { r = g.next(); } while (!r.done); return r.value; }
+
   // Eigenen Plan mit denselben Maßstäben bewerten wie der Finder (für den Vergleich „Mein Plan ↔ Empfehlung“)
   function evalPlan(inp, env) {
     const res = {};
@@ -1124,7 +1182,7 @@ const CORE = (() => {
   const PL_SANTO = { A: 1.0117e-17, n: 5.82 };
 
   return { yearToMs, msToYear, daysSinceGenesis, plUsd, plGrowth, nebenkosten, ltvAdj, estimateRate, loanRateFor, rateRoom, wishRate, loanForRate, btcCapOf, minBuyPrice,
-    pricePath, scenarioMult, cycleFactor, cycleLabel, PL_FIT, PL_SANTO, WORLDS, finderGrid, evalCombo, rankFinder, evalPlan, monteCarlo, mcRunner, signalScore, SIG, KINDERGELD, sellWindow, halvingFor, simulate, compareStrategies, earliestRetire, stressTests, fEur, fEurS, fBtc, fPct };
+    pricePath, scenarioMult, cycleFactor, cycleLabel, PL_FIT, PL_SANTO, WORLDS, finderGrid, evalCombo, rankFinder, recSearch, runGen, evalPlan, monteCarlo, mcRunner, signalScore, SIG, KINDERGELD, sellWindow, halvingFor, simulate, compareStrategies, earliestRetire, stressTests, fEur, fEurS, fBtc, fPct };
 })();
 // ===== CORE-END =====
 </script>
@@ -1237,7 +1295,6 @@ const pct = x => Math.round(x * 100) + '\u00a0%';
 // ---------- Begriffe (ein System überall) ----------
 const SCEN = { sup: ['Schwach', 'supMult'], fair: ['Normal', 'fairMult'], res: ['Stark', 'resMult'] };
 const scenSub = k => `${nf(S[SCEN[k][1]])} × Trendwert`;
-const W_SHORT = { sup: 'Schwach', fair: 'Normal', flat: 'Ohne Zyklus' };
 const STRAT = { top: 'Im Verkaufsfenster tilgen', fixed: 'Zu festem Termin mit Bitcoin ablösen', salary: 'Nur die normale Rate zahlen' };
 const STRAT_S = { top: 'Im Fenster tilgen', fixed: 'Fester Termin', opp: 'Laufend im Hoch', salary: 'Nur Rate' };
 const help = t => `<button class="q" type="button" data-help="${t.replace(/"/g, '&quot;')}" aria-label="Erklärung">?</button>`;
@@ -1389,7 +1446,7 @@ const ALLF = () => [...LAGE, ...CARDS.flatMap(c => c.fields)];
 // Felder, von denen andere abhängen: nach dem Ändern neu zeichnen
 const DEP = ['partnerNet', 'buyHouse', 'kid1', 'kid2', 'kidsStudy', 'pensionOn', 'splitOn', 'strategy', 'rateMode', 'finMode', 'makler', 'sellRule', 'cycleOn', 'plModel', 'taxRegime', 'tankMode', 'btc', 'tilgung', 'minWorkAfterBuy', 'netIncome', 'expenses', 'rent', 'housePrice'];
 
-let MAIN_RUN = null, SCEN_RUNS = {}, STRESS = null, MYPLAN = null;
+let MAIN_RUN = null, SCEN_RUNS = {}, STRESS = null;
 const OPEN = new Set((() => { try { return JSON.parse(localStorage.getItem(STORE + '-open') || '[]'); } catch (e) { return []; } })());
 
 function fieldHtml(f) {
@@ -1475,7 +1532,7 @@ document.addEventListener('input', e => {
   const el = e.target, k = el.dataset.k;
   if (!k || el.tagName === 'SELECT' || el.type === 'checkbox') return;
   if (!setVal(k, el.value, el)) return;
-  if (SLIDERS.some(m => m.k === k)) { if (k !== 'loanRate') S.fromFinder = false; syncSliders(); save(); scheduleLight(); return; }
+  if (SLIDERS.some(m => m.k === k)) { S.fromFinder = false; syncSliders(); save(); scheduleLight(); return; }
   if (S.example && LAGE.some(f => f.k === k)) { S.example = false; const b = document.getElementById('exBanner'); if (b) b.remove(); }
   save(); schedule();
 });
@@ -1516,7 +1573,7 @@ document.addEventListener('click', e => {
   // Säule in Frage 3 / Feld im Kaufjahr-Streifen: ändert nur diesen einen Regler, wie Schieben
   const rb = t.closest('[data-ret]'), bb = t.closest('[data-buy]');
   if (rb || bb) { if (rb) S.retireYear = +rb.dataset.ret; else S.purchaseYear = +bb.dataset.buy; S.fromFinder = false; save(); renderSliders(); recalc(); }
-  const rt = t.closest('[data-rate]'); if (rt) { S.loanRate = rt.dataset.rate === 'auto' ? -1 : +rt.dataset.rate; save(); renderSliders(); schedule(); }
+  const rt = t.closest('[data-rate]'); if (rt) { S.loanRate = rt.dataset.rate === 'auto' ? -1 : +rt.dataset.rate; S.fromFinder = false; save(); renderSliders(); schedule(); }
   if (t.closest('#fRun')) runFinder();
 });
 // Erklär-Blase für Fachbegriffe
@@ -1572,7 +1629,6 @@ function scheduleLight() {
 function recalcLight() {
   const e = env();
   MAIN_RUN = CORE.simulate(S, e); SCEN_RUNS.fair = MAIN_RUN; SCEN_RUNS.sup = CORE.simulate(S, e, { scen: 'sup' });
-  MYPLAN = CORE.evalPlan(S, e);
   syncSliders(); renderAnswer(); renderQ1(); renderQ2(); renderQ3();
 }
 
@@ -1761,7 +1817,6 @@ function recalc() {
   MAIN_RUN = CORE.simulate(S, e);
   ['sup', 'fair', 'res'].forEach(sc => SCEN_RUNS[sc] = sc === 'fair' ? MAIN_RUN : CORE.simulate(S, e, { scen: sc }));
   STRESS = CORE.stressTests(S, e);
-  MYPLAN = CORE.evalPlan(S, e);
 
   document.getElementById('chips').innerHTML = `
     <button class="chip tgl" id="bPrice" title="Bitcoin-Kurs ändern">Bitcoin <b>${fEur(e.priceEur)}</b> · ${S.btcManual > 0 ? 'von Ihnen eingetragen' : priceSrc()} ✎</button>
@@ -1825,7 +1880,8 @@ function renderAnswer() {
   if (FINDER.running) h += `<div class="prog"><i id="fBar" style="width:0%"></i></div><p class="note">Der Rechner sucht den besten Plan … <span id="fProg">0 %</span></p>`;
   else if (stale()) h += '<div class="stale">Ihre Angaben haben sich geändert – der Plan wird gleich neu berechnet …</div>';
   else if (!FINDER.res) h += `<button class="primary big" id="fRun">Plan berechnen</button>`;
-  else if (!best) h += `<div class="bad">Kein Plan hält in allen Prüffällen. Stellschrauben: günstigeres Haus, niedrigeres Wunsch-Netto, höhere Rate oder späterer Rentenstart.</div>`;
+  else if (!best) h += `<div class="bad">Kein Plan gefunden, der im Fall „Normal“ hält. Stellschrauben: günstigeres Haus, niedrigeres Wunsch-Netto, höhere Rate oder späterer Rentenstart.</div>`;
+  else if (best.reached === false) h += `<div class="bad">Kein Plan erreicht ${pct(FINDER.res.target || 0.8)} Sicherheit. Empfohlen ist der sicherste gefundene (${pct(best.mc)}). Stellschrauben: günstigeres Haus, niedrigeres Wunsch-Netto oder höhere Rate.</div>`;
   top.innerHTML = h;
   const sn = safetyNow(), sv = sn ? Math.round(sn.v * 100) : null;
   const red = R.status === 'red', cls = red ? 'red' : sv == null ? 'soft' : sv >= 80 ? 'green' : sv >= 60 ? 'yellow' : 'red';
@@ -1975,7 +2031,7 @@ function renderQ2() {
   const rows = S.finMode === 'rate' ? kvRows() : [], zero = rows.find(x => x.r === 0), base = Math.max(S.btc, 1e-9), used = p.btcTotal;
   const saved = zero && !zero.short ? Math.max(0, zero.btc - used) : 0, yV = Math.max(2040, Math.floor(S.purchaseYear) + 6), pv = CORE.pricePath(S, env(), 'fair')(yV + 0.5).price;
   const bar = (sold, label) => `<div class="bl">${label}</div><div class="bbar"><i class="sold" style="width:${Math.min(100, sold / base * 100).toFixed(1)}%"></i><i class="kept" style="width:${Math.max(0, 100 - sold / base * 100).toFixed(1)}%"></i></div>`;
-  const kvOk = MC.kv && (MC.kvKey === kvKey() || MC.running), cur = CORE.wishRate(S, env()), sn = safetyNow();
+  const kvOk = MC.kv && MC.kvFor === kvKey(), cur = CORE.wishRate(S, env()), sn = safetyNow();
   const rr = R.rows.find(x => x.y === S.retireYear), payoff = R.events.filter(e => e.type === 'loan' && /abgelöst/.test(e.txt)).pop();
   const sup = SCEN_RUNS.sup;
   el.innerHTML = `<div class="qa">${used > 1e-4 ? `${fBtc(used)}${saved > 0.005 ? ` – der Kredit schützt ${fBtc(saved)}` : ''}` : 'Keine Bitcoin nötig'}</div>
@@ -2197,7 +2253,7 @@ async function runMCInner() {
   }
   // Bitcoin oder Kredit: Sicherheit je Rate, mit denselben Zukünften
   if (S.buyHouse && S.finMode === 'rate' && MC.kvKey !== kvKey()) {
-    const kk = kvKey(), kv = {}; MC.kv = kv; MC.kvKey = null;
+    const kk = kvKey(), kv = {}; MC.kv = kv; MC.kvKey = null; MC.kvFor = kk; // Teilergebnisse gelten nur für genau diese Angaben
     for (const r of kvRates()) {
       const v = Math.abs(r - CORE.wishRate(S, e)) < 1 && MC.key === key ? MC.res : await mcAsync({ ...S, loanRate: r }, e, MC_N, null, still);
       if (!v) return void (MC.again = true);
@@ -2235,13 +2291,11 @@ async function runMCInner() {
 // ===================== Strategie-Suche =====================
 const FINDER = { running: false, res: null, sig: null, queued: false, timer: null };
 const FINDER_FREE = ['scenario', 'purchaseYear', 'btcMaxSell', 'finMode', 'tankMode', 'retireYear', 'payoffYear', 'priceBasis', 'realView', 'expert', 'prevPlan', 'fromFinder', 'btcManual', 'theme', 'planBase', 'checkins', 'done', 'lombardRate', 'lombardLtv', 'lageOpen', '_v', 'example'];
-function finderSig() { const o = { ...S, _model: 4 }; FINDER_FREE.forEach(k => delete o[k]); return JSON.stringify(o); }
+function finderSig() { const o = { ...S, _model: 5 }; FINDER_FREE.forEach(k => delete o[k]); return JSON.stringify(o); }
 (function loadFinder() { try { const j = JSON.parse(localStorage.getItem(STORE + '-finder')); if (j && j.res) { FINDER.res = j.res; FINDER.sig = j.sig; } } catch (e) {} })();
 function saveFinder() { try { localStorage.setItem(STORE + '-finder', JSON.stringify({ sig: FINDER.sig, res: FINDER.res })); } catch (e) {} }
 // veraltet, wenn sich Angaben geändert haben oder der Bitcoin-Kurs seit der Suche um mehr als 5 % bewegt hat
 const stale = () => FINDER.res && (FINDER.sig !== finderSig() || (FINDER.res.price > 0 && Math.abs(env().priceEur / FINDER.res.price - 1) > 0.05));
-const wchips = st => `<div class="wchips">${CORE.WORLDS.map(w => `<span><span class="dot ${st[w.key]}"></span>${W_SHORT[w.key]}</span>`).join('')}</div>`;
-const dots = st => CORE.WORLDS.map(w => `<span class="dot ${st[w.key]}" title="${W_SHORT[w.key]}"></span>`).join('');
 
 function maybeAutoRun(now = false) {
   if (FINDER.running) { if (stale()) FINDER.queued = true; return; }
@@ -2249,47 +2303,27 @@ function maybeAutoRun(now = false) {
   clearTimeout(FINDER.timer);
   FINDER.timer = setTimeout(runFinder, now ? 50 : 1500);
 }
+// Empfehlung = frühestes Rentenjahr mit mindestens REC_TARGET Sicherheit (Monte-Carlo, CORE.recSearch)
+const REC_TARGET = 0.8;
 async function runFinder() {
   if (FINDER.running) { FINDER.queued = true; return; }
   clearTimeout(FINDER.timer);
   FINDER.running = true; renderAnswer(); renderQ1(); renderQ3();
-  const e = env(), goal = 'earliest', target = null;
-  // gesucht werden Kaufzeitpunkt und Rentenjahr – mit Ihrer Kreditrate (Vorschlag oder Ihr Reglerwert)
-  const FS = { ...S, rateMax: S.loanRate >= 0 ? Math.max(S.loanRate, 1e-6) : 0, loanRate: -1 };
-  const o = { buyFrom: S.finderBuyFrom, buyTo: S.finderBuyTo + 0.75, retFrom: Math.floor(e.nowYear) + 1, retTo: Math.min(S.birthYear + 67, 2070),
-    rateFracs: [1], target };
-  const grid = S.buyHouse ? CORE.finderGrid(FS, e, o) : [], list = [];
+  // Angaben zu Beginn festhalten: ändern Sie währenddessen etwas, wird danach neu gesucht
+  const e = env(), sig = finderSig(), inp = { ...S };
+  const o = { buyFrom: S.finderBuyFrom, buyTo: S.finderBuyTo + 0.75, retFrom: Math.floor(e.nowYear) + 1, retTo: Math.min(S.birthYear + 67, 2070), target: REC_TARGET };
   const prog = p => { const b = document.getElementById('fBar'), t = document.getElementById('fProg'); if (b) b.style.width = Math.round(p * 100) + '%'; if (t) t.textContent = Math.round(p * 100) + ' %'; };
-  for (let i = 0; i < grid.length; i++) {
-    list.push(CORE.evalCombo(FS, e, grid[i], o));
-    if (i % 12 === 11) { prog((i + 1) / grid.length * 0.8); await new Promise(r => setTimeout(r, 0)); }
-  }
-  const noHouse = CORE.evalCombo(FS, e, { noHouse: true, rate: 0, tank: S.tankMode }, o); noHouse.noHouse = true;
-  let ranked = S.buyHouse ? CORE.rankFinder(list, goal) : (noHouse.retire != null ? [noHouse] : []);
-  const byYear = [];
-  if (!target && ranked.length && S.buyHouse) {
-    const y0 = ranked[0].retire;
-    // je Kauf + Rate nur die bessere Tank-Variante weiterprüfen (spart die Hälfte der Rechenzeit)
-    const bestOf = new Map();
-    list.forEach(r => { if (r.retire == null) return; const k = r.buy + '|' + r.rate, b = bestOf.get(k);
-      if (!b || r.retire < b.retire || (r.retire === b.retire && r.worst60 > b.worst60)) bestOf.set(k, r); });
-    const pool = [...bestOf.values()];
-    for (let y = y0; y < y0 + 4; y++) {
-      const evals = [];
-      for (const r of pool) if (r.retire <= y) evals.push(CORE.evalCombo(FS, e, { buy: r.buy, rate: r.rate, tank: r.tank }, { ...o, target: y }));
-      const cand = CORE.rankFinder(evals, 'target')[0];
-      if (cand) byYear.push(cand);
-      prog(0.8 + 0.2 * (y - y0 + 1) / 4); await new Promise(r => setTimeout(r, 0));
-    }
-    if (byYear[0]) ranked = [byYear[0], ...ranked.filter(r => r !== byYear[0])];
-  }
-  const strip = r => r ? ({ ...r, fair: { ...r.fair, events: undefined } }) : null;
-  FINDER.res = { goal, ranked: ranked.slice(0, 6).map(strip), byYear: byYear.map(strip), noHouse: strip(noHouse), price: e.priceEur };
-  FINDER.sig = finderSig(); FINDER.running = false; saveFinder();
+  // Generator in Portionen abarbeiten, damit die Seite bedienbar bleibt
+  const drive = async (g, a, b) => { let t = Date.now(); for (;;) { const r = g.next(); if (r.done) return r.value;
+    if (r.value && r.value.p != null) prog(a + (b - a) * Math.min(1, r.value.p * 3)); if (Date.now() - t > 40) { await tick(); t = Date.now(); } } };
+  const rec = inp.buyHouse ? await drive(CORE.recSearch(inp, e, o), 0, 0.75) : null;
+  const nh = await drive(CORE.recSearch(inp, e, { ...o, noHouse: true }), inp.buyHouse ? 0.75 : 0, 1);
+  FINDER.res = { ranked: inp.buyHouse ? (rec ? [rec] : []) : (nh ? [nh] : []), noHouse: nh, price: e.priceEur, target: REC_TARGET };
+  FINDER.sig = sig; FINDER.running = false; saveFinder();
   // Solange Sie nichts verschoben haben, ist die Empfehlung Ihr Plan – auch nach neuer Rechnung
-  if ((FRESH || S.fromFinder) && FINDER.res.ranked[0]) { FRESH = false; applyFinder('ranked:0', true); }
+  if (sig === finderSig() && (FRESH || S.fromFinder) && FINDER.res.ranked[0]) { FRESH = false; applyFinder('ranked:0', true); }
   else recalc();
-  if (FINDER.queued) { FINDER.queued = false; maybeAutoRun(); }
+  if (FINDER.queued || sig !== finderSig()) { FINDER.queued = false; maybeAutoRun(); }
 }
 function applyFinder(ref, silent = false) {
   const [kind, i] = ref.split(':'), R = FINDER.res; if (!R) return;
