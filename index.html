@@ -227,6 +227,15 @@ b.pos{color:var(--green)} b.neg{color:var(--red)}
 /* Neuer Aufbau: sechs Schritte von oben nach unten */
 h3.grp{margin:16px 0 0;font-size:13px;color:var(--muted);font-weight:600;text-transform:none}
 .fields.lage{margin-top:6px}
+.lgrp{border-top:1px solid var(--line);margin-top:14px;padding-top:2px}
+.lgrp:first-of-type{border-top:0;margin-top:4px}
+.lgrp h3.grp{color:var(--ink);font-size:14.5px;margin-top:12px}
+.lgrp details.lmore{margin:0 0 4px}
+.lgrp details.lmore>summary{font-size:13px;font-weight:500;padding:2px 0}
+.f.segf{grid-column:1/-1}
+.seg{display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--soft)}
+.seg button{border:0;border-radius:0;background:transparent;color:var(--ink);font:inherit;font-size:14px;padding:10px 8px;min-height:44px;cursor:pointer}
+.seg button.on{background:var(--accent);color:#fff;font-weight:600}
 .sumrows{margin:8px 0 0}
 .srow{display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--line);font-size:14px}
 .srow span{color:var(--muted);flex:0 0 auto} .srow b{text-align:right;font-weight:600}
@@ -511,7 +520,7 @@ const CORE = (() => {
     const t = pT ?? Math.max(env.nowYear, inp.purchaseYear);
     const hp = inp.priceBasis === 'heute' ? inp.housePrice * Math.pow(1 + inp.houseGrowth / 100, t - env.nowYear) : inp.housePrice;
     const maint = hp * inp.maintPct / 100 / 12;
-    const free = inp.netIncome - (inp.expenses - (inp.rent || 0)) - maint;
+    const free = inp.netIncome - inp.expenses - maint; // Ausgaben ohne Kaltmiete (seit _v 10)
     const bank = inp.netIncome * (inp.bankMaxPct || 40) / 100;
     const suggest = Math.max(0, Math.floor(Math.min(bank * 0.875, free - Math.max(300, inp.netIncome * 0.05)) / 50) * 50);
     return { free, bank, maint, suggest, hp };
@@ -828,11 +837,11 @@ const CORE = (() => {
 
       // 5. Einkommen / Ausgaben
       if (!retired) {
-        // Ab dem Hauskauf entfällt die Kaltmiete (sie steckt in den laufenden Ausgaben); Nebenkosten laufen weiter
+        // Ausgaben ohne Kaltmiete; die Kaltmiete entfällt ab dem Hauskauf, Nebenkosten stecken in den Ausgaben und laufen weiter
         const ownFrac = !inp.buyHouse ? 0 : y > pY ? 1 : y === pY ? Math.max(0, (t1 - pT) / frac) : 0;
         // Hört der Partner / die Partnerin vor Ihnen auf zu arbeiten, fällt sein/ihr Netto aus dem Haushaltsnetto weg
         const partnerGone = inp.partnerNet > 0 && inp.partnerUntil > 0 && y >= inp.partnerUntil ? inp.partnerNet : 0;
-        flow += (inp.netIncome - partnerGone - inp.expenses + (inp.rent || 0) * ownFrac) * 12 * frac;
+        flow += (inp.netIncome - partnerGone - inp.expenses - (inp.rent || 0) * (1 - ownFrac)) * 12 * frac;
         if (inp.dca > 0 && price > 0) { const amt = inp.dca * 12 * frac, b = amt / price; btc += b; tr.push({ t: tm, btc: b, cost: price }); flow -= amt; }
       } else {
         const ages = [inp.kid1, inp.kid2].filter(k => k > 0).map(k => y - k).filter(a => a >= 0);
@@ -1196,10 +1205,10 @@ const fQ = t => { const y = Math.floor(t + 1e-9); return `Q${Math.min(4, Math.fl
 const nf = (v, d = 2) => v.toLocaleString('de-DE', { maximumFractionDigits: d });
 
 const DEFAULTS = {
-  _v: 9, scenario: 'fair', realView: true, prevPlan: null, fromFinder: true, theme: 'auto', lageOpen: true,
+  _v: 10, scenario: 'fair', realView: true, prevPlan: null, fromFinder: true, theme: 'auto', lageOpen: true,
   example: true, // neutrale Beispielwerte, bis eigene Zahlen eingetragen oder ein Plan importiert wird
   birthYear: 1990, kid1: 0, kid2: 0, ageEnd: 90,
-  btc: 2.0, otherAssets: 20000, netIncome: 5000, expenses: 3500, dca: 0, taxFreeFrom: '',
+  btc: 2.0, otherAssets: 20000, netIncome: 5000, expenses: 2400, dca: 0, taxFreeFrom: '',
   btcManual: 0, plModel: 'santo', plA: 1.0117e-17, plN: 5.82,
   supMult: 0.5, fairMult: 0.75, resMult: 1.0, cycleOn: true, cycleAmp: 0.55, cyclePeak: 2025.77, cycleFall: 0.75, convYears: 2, haircut: 0, sellRatio: 1.2, sellRule: 'both', windowGuard: 0.75,
   buyHouse: true, priceBasis: 'heute', housePrice: 600000, houseGrowth: 2, purchaseYear: 2030.5, rent: 1100, minWorkAfterBuy: 1,
@@ -1220,14 +1229,20 @@ let FRESH = false;
 let S = load();
 // Ältere Speicherstände: Finanzierung auf „Monatsrate, Rest Bitcoin“ umstellen
 function migrate(j) {
-  if (j._v >= 9) return j;
+  if (j._v >= 10) return j;
+  if (j._v >= 9) return migrate10(j);
   if (!(j._v >= 8)) {
     if (!(j._v >= 7)) j = { ...j, finMode: !j.finMode || j.finMode === 'maxSell' ? 'rate' : j.finMode, loanRate: -1, fromFinder: true, lageOpen: !!j.example };
     // ab v8: eine Kreditrate (Regler). Eine früher eingetragene Obergrenze wird Ihre Rate.
     j = { ...j, _v: 8, loanRate: j.rateMax > 0 ? j.rateMax : j._v >= 7 && j.loanRate >= 0 && j.fromFinder === false ? j.loanRate : -1, rateMax: 0, finMode: 'rate', finderGoal: 'earliest' };
   }
   // ab v9: keine feste Bitcoin-Obergrenze mehr – die Kauf-Ampel rechnet den Mindestkurs aus Ihrem Plan
-  return { ...j, _v: 9, btcCap: 0 };
+  return migrate10({ ...j, _v: 9, btcCap: 0 });
+}
+// ab v10: „Ausgaben“ ohne Kaltmiete – die Miete ist ein eigenes Feld (vorher „Ausgaben inkl. Miete“, „davon Kaltmiete“)
+function migrate10(j) {
+  const rent = j.rent != null ? +j.rent || 0 : DEFAULTS.rent, exp = j.expenses != null ? +j.expenses : null;
+  return { ...j, _v: 10, ...(exp != null ? { expenses: Math.max(0, exp - rent) } : {}) };
 }
 function load() {
   try { const j = JSON.parse(localStorage.getItem(STORE)); if (j && typeof j === 'object') return { ...DEFAULTS, ...migrate(j), scenario: 'fair', realView: true }; } catch (e) {}
@@ -1320,35 +1335,44 @@ const GLOSS = {
 // Ihre Kreditrate: genau eine Eingabe – der Regler in Frage 2 (−1 = Vorschlag aus Ihrem Spielraum)
 const rateMaxEff = () => CORE.wishRate(S, env());
 const rateSuggest = () => CORE.rateRoom(S, env()).suggest;
-// ① Ihre Lage: alle Eingaben an einem Ort, in vier Gruppen
+// ① Ihre Lage: alle persönlichen Angaben an einem Ort, in fünf Blöcken (m: 1 = unter „mehr“ im Block)
+const KV_HINT = 'Krankenversicherung in der Rente: Summe für alle – Ihr eigener Beitrag plus private Beiträge von Partner/in und Kindern. Freiwillig gesetzlich 2026 ca. 270–1.230 € (inkl. Pflege). Angerechnet werden u. a. Zinsen und ETF-Erträge, Bitcoin-Gewinne nach 1 Jahr in der Regel nicht. Ist Ihr/e Partner/in privat versichert (z. B. verbeamtet), zählt die Kasse bis zur Hälfte ihres/seines Einkommens bei Ihnen mit. Kinder und Partner/in (eigenes Einkommen bis 565 €) sind nur beitragsfrei mitversichert, wenn Sie gesetzlich versichert sind – mit der Kasse klären';
 const LAGE_G = [
-  { id: 'fam', t: 'Sie und Familie', sum: () => { const kids = [S.kid1, S.kid2].filter(k => k > 0).length; return `${Math.floor(ENV.nowYear) - S.birthYear} Jahre${kids ? ` · ${kids} Kind${kids > 1 ? 'er' : ''}` : ''}${S.partnerNet > 0 ? ' · mit Partner/in' : ''}`; },
+  { id: 'fam', t: 'Sie und Familie',
     f: [
       { k: 'birthYear', l: 'Ihr Geburtsjahr', s: 1 },
-      { k: 'kid1', l: 'Geburtsjahr Kind 1', s: 1, h: '0 = kein Kind' },
-      { k: 'kid2', l: 'Geburtsjahr Kind 2', s: 1, h: '0 = kein Kind' },
-      { k: 'partnerNet', l: 'davon Netto Partner/in', u: '€/Monat', s: 100, h: 'Teil des Haushaltsnettos · 0 = alleinverdienend' },
-      { k: 'partnerUntil', l: 'Partner/in arbeitet bis', u: 'Jahr', s: 1, show: () => S.partnerNet > 0, h: 'arbeitet sie/er nach Ihrem Ausstieg weiter, sinkt die Entnahme' },
+      { k: 'kid1', l: 'Geburtsjahr 1. Kind', s: 1, h: '0 = kein Kind' },
+      { k: 'kid2', l: 'Geburtsjahr 2. Kind', s: 1, h: '0 = kein (weiteres) Kind' },
     ] },
-  { id: 'geld', t: 'Geld heute', sum: () => `${fBtc(S.btc)} · Netto ${fEur(S.netIncome)} · Ausgaben ${fEur(S.expenses)}`,
+  { id: 'geld', t: 'Einkommen und Ausgaben heute',
     f: [
-      { k: 'btc', l: 'Bitcoin-Bestand', u: 'BTC', s: 0.01 },
-      { k: 'btcCost', l: 'Einstandspreis je Bitcoin', u: '€', s: 1000, h: 'Ø Kaufpreis inkl. Gebühren – zählt nur, falls die Steuerfreiheit wegfällt' },
-      { k: 'otherAssets', l: 'Erspartes (Tagesgeld)', u: '€', s: 1000 },
-      { k: 'netIncome', l: 'Haushaltsnetto', u: '€/Monat', s: 100 },
-      { k: 'expenses', l: 'Ausgaben inkl. Miete', u: '€/Monat', s: 100 },
+      { k: 'netIncome', l: 'Haushaltsnetto', u: '€/Monat', s: 100, h: 'alle Nettoeinkommen zusammen, inkl. Kindergeld · bei privat Versicherten nach Abzug ihres Beitrags' },
+      { k: 'partnerNet', l: 'davon Netto Partner/in', u: '€/Monat', s: 100, h: '0 = alleinverdienend' },
+      { k: 'partnerUntil', l: 'Partner/in arbeitet bis', u: 'Jahr', s: 1, show: () => S.partnerNet > 0, h: 'danach fällt ihr/sein Netto weg · arbeitet sie/er nach Ihrem Rentenstart weiter, sinkt die Entnahme' },
+      { k: 'expenses', l: 'Ausgaben ohne Miete', u: '€/Monat', s: 100, h: 'alles, was Sie im Monat ausgeben, ohne Kaltmiete und ohne Sparen · Nebenkosten wie Heizung und Strom gehören dazu' },
     ] },
-  { id: 'haus', t: 'Haus', sum: () => S.buyHouse ? `${fEurS(S.housePrice)} · Rate ${fEur(rateMaxEff())}` : 'kein Hauskauf',
+  { id: 'verm', t: 'Vermögen', ms: 'Einstandspreis',
     f: [
-      { k: 'buyHouse', l: 'Haus kaufen', t: 'chk' },
+      { k: 'btc', l: 'Bitcoin', u: 'BTC', s: 0.01 },
+      { k: 'otherAssets', l: 'Erspartes außer Bitcoin', u: '€', s: 1000, h: 'Tagesgeld, Festgeld, ETFs · wächst im Modell mit dem Tagesgeld-Zins' },
+      { k: 'dca', l: 'Bitcoin-Sparplan', u: '€/Monat', s: 50, h: 'bis zum Rentenstart · 0 = keiner' },
+      { k: 'btcCost', l: 'Einstandspreis je Bitcoin', u: '€', s: 1000, m: 1, h: 'Ø Kaufpreis inkl. Gebühren – zählt nur, falls die Steuerfreiheit wegfällt' },
+    ] },
+  { id: 'wohnen', t: 'Wohnen', ms: 'Tilgung, Arbeit nach dem Kauf',
+    f: [
+      { k: 'buyHouse', t: 'seg', o: [[false, 'Zur Miete bleiben'], [true, 'Haus kaufen']] },
+      { k: 'rent', l: 'Kaltmiete heute', u: '€/Monat', s: 50, h: () => S.buyHouse ? 'fällt mit dem Hauskauf weg' : 'läuft auch in der Rente weiter (steigt mit der Inflation)' },
       { k: 'housePrice', l: 'Hauspreis (heutige Preise)', u: '€', s: 10000, show: () => S.buyHouse, h: () => `steigt im Modell um ${nf(S.houseGrowth, 1)} % pro Jahr` },
-      { k: 'rent', l: 'davon Kaltmiete', u: '€/Monat', s: 50, h: () => S.buyHouse ? 'fällt nach dem Hauskauf weg. Nebenkosten wie Heizung, Wasser und Grundsteuer zahlen Sie im eigenen Haus weiter' : 'läuft in der Rente weiter (mit der Inflation)' },
-      { k: 'tilgung', l: 'Anfängliche Tilgung', u: '% pro Jahr', s: 0.1, show: () => S.buyHouse, h: 'Banken verlangen meist 1–2 %. Weniger Tilgung = mehr Kredit bei gleicher Rate, dafür länger Schulden' },
-      { k: 'minWorkAfterBuy', l: 'Nach dem Kauf noch arbeiten', u: 'Jahre', s: 0.5, show: () => S.buyHouse, h: 'Die Bank gibt den Kredit nur mit Arbeitseinkommen. 1 Jahr ist ein vorsichtiger, ehrlicher Puffer (Probezeit, Selbstauskunft)' },
+      { k: 'tilgung', l: 'Anfängliche Tilgung', u: '% pro Jahr', s: 0.1, m: 1, show: () => S.buyHouse, h: 'Banken verlangen meist 1–2 %. Weniger Tilgung = mehr Kredit bei gleicher Rate, dafür länger Schulden' },
+      { k: 'minWorkAfterBuy', l: 'Nach dem Kauf noch arbeiten', u: 'Jahre', s: 0.5, m: 1, show: () => S.buyHouse, h: 'Die Bank gibt den Kredit nur mit Arbeitseinkommen. 1 Jahr ist ein vorsichtiger, ehrlicher Puffer (Probezeit, Selbstauskunft)' },
     ] },
-  { id: 'rente', t: 'Rente', sum: () => `Wunsch ${fEur(S.desired)}/Monat`,
+  { id: 'rente', t: 'Rente', ms: 'Familienversicherung',
     f: [
-      { k: 'desired', l: 'Wunsch-Netto in der Rente', u: '€/Monat', s: 100, h: 'für die ganze Familie, in heutiger Kaufkraft · inkl. Nebenkosten fürs Wohnen, ohne Miete und Kredit (Krankenversicherung, Instandhaltung und Kindergeld rechnet der Rechner dazu)' },
+      { k: 'desired', l: 'Wunsch-Netto in der Rente', u: '€/Monat', s: 100, h: 'für die ganze Familie, in heutiger Kaufkraft · ohne Miete, Kredit und Krankenversicherung · Instandhaltung rechnet der Rechner dazu, Kindergeld zieht er ab' },
+      { k: 'kv', l: 'Krankenversicherung in der Rente', u: '€/Monat', s: 10, h: `Summe für alle: Ihr Beitrag plus private Beiträge von Partner/in und Kindern ${help(KV_HINT)}` },
+      { k: 'pensionOn', l: 'Gesetzliche Rente ab 67 einrechnen', t: 'chk' },
+      { k: 'pension', l: 'Gesetzliche Rente (heute)', u: '€/Monat', s: 50, show: () => S.pensionOn, h: 'laut Renteninformation, in heutiger Kaufkraft' },
+      { k: 'kvFamily', l: 'Solange Partner/in arbeitet: über sie/ihn familienversichert (nur möglich, wenn sie/er gesetzlich versichert ist)', t: 'chk', m: 1, show: () => S.partnerNet > 0 },
     ] },
 ];
 const LAGE = LAGE_G.flatMap(g => g.f);
@@ -1415,8 +1439,6 @@ const CARDS = [
       { k: 'flexCut', l: 'In Bitcoin-Tiefs weniger ausgeben', u: '%', s: 5, h: 'z. B. 10 % = in schwachen Jahren 10 % weniger vom Wunsch-Netto' },
       { k: 'kidsStudy', l: 'Kinder machen Ausbildung/Studium (18–25)', t: 'chk', show: () => S.kid1 > 0 || S.kid2 > 0 },
       { k: 'kidsStudyCost', l: 'Kosten je Kind in Ausbildung', u: '€/Monat', s: 50, show: () => S.kidsStudy && (S.kid1 > 0 || S.kid2 > 0), h: 'Kindergeld (259 €) läuft dann bis 25 weiter' },
-      { k: 'pensionOn', l: 'Gesetzliche Rente ab 67', t: 'chk' },
-      { k: 'pension', l: 'Gesetzliche Rente (heute)', u: '€/Monat', s: 50, show: () => S.pensionOn },
       { k: 'inflation', l: 'Inflation', u: '% p. a.', s: 0.1, x: 1 },
       { k: 'maintPct', l: 'Instandhaltung Haus', u: '% vom Wert', s: 0.1, x: 1 },
       { k: 'kidsMonthly', l: 'Extra pro Kind bis 18', u: '€/Monat', s: 50, x: 1 },
@@ -1426,14 +1448,11 @@ const CARDS = [
       { k: 'topf1Equity', l: 'Aktien-ETF-Anteil im Tank', u: '%', s: 5, x: 1 },
       { k: 'refillTo', l: 'Im Fenster auffüllen auf', u: 'Jahresausgaben', s: 0.5, x: 1 },
       { k: 'ageEnd', l: 'Planen bis Alter', s: 1, x: 1 },
-      { k: 'dca', l: 'BTC-Sparplan bis Rente', u: '€/Monat', s: 50, x: 1 },
       { k: 'cashRate', l: 'Tagesgeld-Zins', u: '% p. a.', s: 0.1, x: 1 },
     ], out: outRetire },
-  { id: 'd4', t: 'Steuer und Krankenversicherung', sub: () => `${(S.taxRegime || 'keep') === 'keep' ? 'Bitcoin nach 1 Jahr steuerfrei' : 'Steuerfreiheit fällt ' + S.taxChangeYear + ' weg'} · KV ${fEur(S.kv)}/Monat`,
-    ex: `${GLOSS.steuer} Krankenversicherung: freiwillig gesetzlich 2026 mind. ca. 270 €, höchstens ca. 1.230 € im Monat (inkl. Pflege).`,
+  { id: 'd4', t: 'Steuer', sub: () => (S.taxRegime || 'keep') === 'keep' ? 'Bitcoin nach 1 Jahr steuerfrei' : 'Steuerfreiheit fällt ' + S.taxChangeYear + ' weg',
+    ex: GLOSS.steuer,
     fields: [
-      { k: 'kv', l: 'Krankenversicherung (Haushalt)', u: '€/Monat', s: 10, h: 'Summe für alle: Ihr eigener Beitrag plus private Beiträge von Partner/in und Kindern. Angerechnet werden u. a. Zinsen und ETF-Erträge, Bitcoin-Gewinne nach 1 Jahr in der Regel nicht. Ist Ihr/e Partner/in privat versichert (z. B. verbeamtet), zählt die Kasse bis zur Hälfte ihres/seines Einkommens bei Ihnen mit. Kinder und Partner/in (eigenes Einkommen bis 565 €) sind nur beitragsfrei mitversichert, wenn Sie gesetzlich versichert sind – mit der Kasse klären' },
-      { k: 'kvFamily', l: 'Solange Partner/in arbeitet: über sie/ihn familienversichert (nur möglich, wenn sie/er gesetzlich versichert ist)', t: 'chk', show: () => S.partnerNet > 0 },
       { k: 'taxRegime', l: 'Steuerfreiheit nach 1 Jahr Haltedauer', t: 'sel', o: [['keep', 'bleibt (heutiges Recht)'], ['grandfather', 'fällt weg – bisherige Bitcoin bleiben steuerfrei'], ['abolish', 'fällt ganz weg']] },
       { k: 'taxChangeYear', l: 'Steueränderung ab', u: 'Jahr', s: 1, show: () => S.taxRegime && S.taxRegime !== 'keep' },
       { k: 'taxFreeFrom', l: 'Bitcoin steuerfrei ab', t: 'date', x: 1 },
@@ -1453,6 +1472,7 @@ function fieldHtml(f) {
   if (f.show && !f.show()) return '';
   const v = S[f.k], fh = typeof f.h === 'function', hint = fh ? f.h() : f.h;
   if (f.t === 'sel') return `<label class="f"><span>${f.l}</span><select data-k="${f.k}" ${f.num ? 'data-num="1"' : ''}>${f.o.map(([val, lab]) => `<option value="${val}"${String(v) === String(val) ? ' selected' : ''}>${lab}</option>`).join('')}</select></label>`;
+  if (f.t === 'seg') return `<div class="f segf"><div class="seg" role="group">${f.o.map(([val, lab]) => `<button type="button" data-seg="${f.k}" data-v="${val}" class="${v === val ? 'on' : ''}" aria-pressed="${v === val}">${lab}</button>`).join('')}</div></div>`;
   if (f.t === 'chk') return `<label class="f chk"><input type="checkbox" data-k="${f.k}" ${v ? 'checked' : ''}><span>${f.l}</span></label>`;
   if (f.t === 'date') return `<label class="f"><span>${f.l}</span><div class="inp"><input type="date" data-k="${f.k}" value="${v}"></div></label>`;
   return `<label class="f"><span>${f.l}</span><div class="inp"><input type="number" inputmode="decimal" data-k="${f.k}" value="${v}" step="${f.s ?? 'any'}"><em>${f.u || ''}</em></div>${hint ? `<small${fh ? ` data-hint="${f.k}"` : ''}>${hint}</small>` : ''}</label>`;
@@ -1460,20 +1480,17 @@ function fieldHtml(f) {
 function refreshHints() { document.querySelectorAll('[data-hint]').forEach(el => { const f = ALLF().find(x => x.k === el.dataset.hint); if (f && typeof f.h === 'function') el.textContent = f.h(); }); }
 
 // ---------- ① Ihre Lage ----------
-const ESSENTIAL = ['birthYear', 'btc', 'otherAssets', 'netIncome', 'expenses', 'rent', 'housePrice', 'desired'];
-let LAGE_MORE = false;
+const LAGE_MORE = new Set(); // aufgeklappte „mehr“-Bereiche je Block
+const lageSum = () => `${Math.floor(ENV.nowYear) - S.birthYear} J. · ${fBtc(S.btc)} · Netto ${fEur(S.netIncome)} · ${S.buyHouse ? `Haus ${fEurS(S.housePrice)}` : `Miete ${fEur(S.rent)}`} · Wunsch ${fEur(S.desired)}`;
 function renderLage() {
-  const open = S.lageOpen || S.example, ess = LAGE.filter(f => ESSENTIAL.includes(f.k));
-  const sum = `${Math.floor(ENV.nowYear) - S.birthYear} J. · ${fBtc(S.btc)} · Netto ${fEur(S.netIncome)} · ${S.buyHouse ? `Haus ${fEurS(S.housePrice)}` : 'kein Hauskauf'} · Wunsch ${fEur(S.desired)}`;
+  const open = S.lageOpen || S.example, vis = f => !f.show || f.show();
   document.getElementById('secLage').innerHTML = open ? `
     <div class="sechead"><div><h2>Ihre Lage</h2><p class="lead">Diese Angaben genügen für eine Antwort.</p></div></div>
     ${S.example ? `<div class="exbanner" id="exBanner"><b>Beispielwerte.</b> Tragen Sie Ihre eigenen Zahlen ein oder laden Sie einen gespeicherten Plan (ganz unten „Plan importieren“). Ihre Angaben bleiben nur auf diesem Gerät.</div>` : ''}
-    <div class="fields lage">${ess.map(fieldHtml).join('')}</div>
-    <details class="more lmore"${LAGE_MORE ? ' open' : ''}><summary>Mehr Angaben: Familie, Kredit, Einstandspreis</summary>
-      ${LAGE_G.map(g => { const f = g.f.filter(x => !ESSENTIAL.includes(x.k)); return f.length ? `<h3 class="grp">${g.t}</h3><div class="fields lage">${f.map(fieldHtml).join('')}</div>` : ''; }).join('')}
-    </details>
+    ${LAGE_G.map((g, i) => { const more = g.f.filter(x => x.m && vis(x));
+      return `<div class="lgrp"><h3 class="grp">${i + 1} · ${g.t}</h3><div class="fields lage">${g.f.filter(x => !x.m).map(fieldHtml).join('')}</div>${more.length ? `<details class="more lmore" data-g="${g.id}"${LAGE_MORE.has(g.id) ? ' open' : ''}><summary>mehr: ${g.ms}</summary><div class="fields lage">${more.map(fieldHtml).join('')}</div></details>` : ''}</div>`; }).join('')}
     <div class="row end"><button class="primary" id="bLage">Fertig</button></div>`
-    : `<div class="lsum"><span data-gsum="all">${sum}</span><button class="linkbtn" id="bLage">Angaben ändern</button></div>`;
+    : `<div class="lsum"><span data-gsum="all">${lageSum()}</span><button class="linkbtn" id="bLage">Angaben ändern</button></div>`;
 }
 
 // ---------- ④ Regler ----------
@@ -1563,7 +1580,12 @@ document.addEventListener('click', e => {
   const cs = t.closest('details.chk > summary'); if (cs) CHECK_OPEN = !cs.parentElement.open;
   const xs = t.closest('details.stx > summary'); if (xs) STRESS_OPEN = !xs.parentElement.open;
   const rs = t.closest('#roadDet > summary'); if (rs) ROAD_OPEN = !rs.parentElement.open;
-  const ls = t.closest('details.lmore > summary'); if (ls) LAGE_MORE = !ls.parentElement.open;
+  const ls = t.closest('details.lmore > summary'); if (ls) { const g = ls.parentElement.dataset.g; if (ls.parentElement.open) LAGE_MORE.delete(g); else LAGE_MORE.add(g); }
+  const sg = t.closest('[data-seg]');
+  if (sg) { // Wahl mit zwei Knöpfen (Wohnen: Miete oder Kauf) – wirkt wie ein Häkchen
+    const k = sg.dataset.seg, v = sg.dataset.v === 'true' ? true : sg.dataset.v === 'false' ? false : sg.dataset.v;
+    if (S[k] !== v) { S[k] = v; if (S.example) S.example = false; save(); renderLage(); renderFields(); renderSliders(); schedule(); }
+  }
   if (t.closest('#bLage')) {
     const open = S.lageOpen || S.example;
     S.lageOpen = !open; if (open) S.example = false; save(); renderLage();
@@ -1718,7 +1740,7 @@ function outHouseLoan() {
   if (!S.buyHouse) return '<p class="note">Kein Hauskauf geplant – die Miete läuft in der Rente weiter.</p>';
   const p = MAIN_RUN.purchase, e = env();
   if (!p) return `<p class="note">Der Kaufzeitpunkt ${fQ(S.purchaseYear)} liegt außerhalb des Planungszeitraums.</p>`;
-  const surplus = S.netIncome - S.expenses + S.rent;
+  const surplus = S.netIncome - S.expenses;
   let h = `<div class="tiles">
     <div class="tile"><small>Kaufpreis ${fQ(S.purchaseYear)}</small><b>${fEurS(p.hp)}</b><em>+ ${fEurS(p.nk.sum)} Nebenkosten (${fPct(p.nk.pct, 1)})</em></div>
     <div class="tile"><small>Aus Bitcoin</small><b>${fBtc(p.btcTotal)}</b><em>${p.preBtc > 0 ? `davon ${fBtc(p.preBtc)} vorab im Verkaufsfenster` : `bei ${fEurS(p.price)}/BTC`}${p.cashUsed - (p.preCash || 0) > 1 ? ` · + ${fEurS(p.cashUsed - (p.preCash || 0))} Erspartes` : ''}</em></div>
@@ -1780,13 +1802,13 @@ function checklistItems() {
     ...(loan > 0 ? [
       { id: 'risikoleben', g: 'Familie absichern', t: `Risikolebensversicherung über ca. ${fEurS(loan)}`, d: 'Deckt den Kredit, falls Ihnen etwas zustößt – sonst müsste Ihre Familie Bitcoin womöglich im Tief verkaufen.' },
     ] : []),
-    { id: 'bu', g: 'Familie absichern', t: 'Berufsunfähigkeit absichern (bis zum Ausstieg)', d: `Bis ${S.retireYear} hängt der Plan an Ihrem Einkommen (Überschuss ${fEur(S.netIncome - S.expenses)}/Monat). Fällt es aus, fehlen Rate und Sparleistung.` },
+    { id: 'bu', g: 'Familie absichern', t: 'Berufsunfähigkeit absichern (bis zum Ausstieg)', d: `Bis ${S.retireYear} hängt der Plan an Ihrem Einkommen (Überschuss ${fEur(S.netIncome - S.expenses - (S.rent || 0))}/Monat). Fällt es aus, fehlen Rate und Sparleistung.` },
     ...(kids ? [{ id: 'sorge', g: 'Familie absichern', t: 'Sorgerechtsverfügung und Testament', d: 'Wer kümmert sich um die Kinder, wer erbt die Bitcoin? Ohne Testament gilt die gesetzliche Erbfolge.' }] : []),
-    { id: 'notgroschen', g: 'Familie absichern', t: `Notgroschen außerhalb des Plans: ca. ${fEurS(S.expenses * 6)}`, d: 'Etwa 6 Monatsausgaben auf dem Tagesgeld, die weder fürs Haus noch für den Sicherheitstank verplant sind – für Reparaturen, Jobwechsel oder Krankheit, damit Sie nie Bitcoin im Tief verkaufen müssen.' },
+    { id: 'notgroschen', g: 'Familie absichern', t: `Notgroschen außerhalb des Plans: ca. ${fEurS((S.expenses + (S.rent || 0)) * 6)}`, d: 'Etwa 6 Monatsausgaben auf dem Tagesgeld, die weder fürs Haus noch für den Sicherheitstank verplant sind – für Reparaturen, Jobwechsel oder Krankheit, damit Sie nie Bitcoin im Tief verkaufen müssen.' },
     { id: 'wallet', g: 'Wallet & Zugang', t: 'Notfallplan für die Bitcoin', d: 'Eine Vertrauensperson muss im Ernstfall an die Bitcoin kommen: wo die Hardware-Wallet liegt, wo die Wiederherstellungswörter sicher verwahrt sind (nie digital), wer sie nutzen darf. Ein Brief im Bankschließfach oder beim Notar, getrennt von den Wörtern.' },
     { id: 'probe', g: 'Wallet & Zugang', t: 'Wiederherstellung einmal üben', d: 'Mit einer Test-Wallet und kleinem Betrag prüfen, dass die Wiederherstellungswörter wirklich funktionieren.' },
     { id: 'kv', g: 'Rente', t: 'Krankenversicherung nach dem Ausstieg klären', d: 'Freiwillig gesetzlich, Familienversicherung über den Partner oder privat? Beitrag hängt davon ab, welche Einnahmen die Kasse anrechnet – vorab schriftlich bestätigen lassen.' },
-    { id: 'rente', g: 'Rente', t: 'Renteninformation prüfen', d: 'Wie hoch ist die gesetzliche Rente ab 67, wenn Sie mit dem Ausstieg keine Beiträge mehr zahlen? Wert unten bei „Gesetzliche Rente“ eintragen.' },
+    { id: 'rente', g: 'Rente', t: 'Renteninformation prüfen', d: 'Wie hoch ist die gesetzliche Rente ab 67, wenn Sie mit dem Ausstieg keine Beiträge mehr zahlen? Wert unter „Ihre Lage → Rente“ eintragen.' },
   ];
 }
 function outChecklist() {
@@ -1825,7 +1847,7 @@ function recalc() {
   tb.innerHTML = `<span aria-hidden="true">${THEME_I[S.theme]}</span> <b>${THEME_L[S.theme]}</b>`;
   tb.setAttribute('aria-label', `Darstellung: ${THEME_L[S.theme]} – tippen zum Wechseln`);
 
-  const gs = document.querySelector('[data-gsum="all"]'); if (gs) gs.textContent = `${Math.floor(ENV.nowYear) - S.birthYear} J. · ${fBtc(S.btc)} · Netto ${fEur(S.netIncome)} · ${S.buyHouse ? `Haus ${fEurS(S.housePrice)}` : 'kein Hauskauf'} · Wunsch ${fEur(S.desired)}`;
+  const gs = document.querySelector('[data-gsum="all"]'); if (gs) gs.textContent = lageSum();
   refreshHints(); syncSliders();
   renderAnswer(); renderQ1(); renderQ2(); renderQ3(); renderQ4(); renderRoad();
   scheduleMC();
@@ -1994,7 +2016,7 @@ function ampelHtml() {
 }
 function renderQ1() {
   const el = document.getElementById('q1Body'); if (!el) return;
-  if (!S.buyHouse) { el.innerHTML = `<div class="qa">Kein Hauskauf geplant</div><p class="s">Einschalten unter „Ihre Lage → Mehr Angaben“.</p>`; return; }
+  if (!S.buyHouse) { el.innerHTML = `<div class="qa">Kein Hauskauf geplant</div><p class="s">Sie bleiben zur Miete. Umstellen unter „Ihre Lage → 4 · Wohnen“.</p>`; return; }
   buildBuyRows();
   const lab = CORE.cycleLabel({ ...S, cycleOn: true }, S.purchaseYear), p = MAIN_RUN.purchase, mw = S.minWorkAfterBuy ?? 1;
   el.innerHTML = `<div class="qa">${qWord(S.purchaseYear)}${lab === 'steigend' ? ' – im Anstieg vor dem Bitcoin-Hoch' : lab ? ` – Bitcoin-Phase: ${lab}` : ''}</div>
@@ -2019,7 +2041,7 @@ function loanHow(R) {
   const parts = p.parts.map(x => `<li><b>${x.flex ? 'Variabler Teil' : `Fester Teil (${S.fixYears} Jahre Zinsbindung)`}:</b> ${fEurS(x.amt)} · ${fPct(x.rate * 100)} Zins + ${til} Tilgung = ${fEur(x.pmt)}/Monat</li>`).join('');
   const evs = R.events.filter(e => e.type === 'loan').map(e => `<li>${e.t != null ? fQ(e.t) : e.y}: ${plainEv(e.txt)}</li>`).join('');
   return `<details class="more how"${HOW_OPEN ? ' open' : ''}><summary>So ist der Kredit gerechnet</summary>
-    <p class="note">Kredit = Rate × 12 ÷ (Zins + Tilgung). Ihre Rate von ${fEur(p.pmt)} trägt ${fEurS(p.loanAmt)}. Mit weniger Tilgung würde dieselbe Rate mehr Kredit tragen (Ihre Lage → Mehr Angaben).</p>
+    <p class="note">Kredit = Rate × 12 ÷ (Zins + Tilgung). Ihre Rate von ${fEur(p.pmt)} trägt ${fEurS(p.loanAmt)}. Mit weniger Tilgung würde dieselbe Rate mehr Kredit tragen (Ihre Lage → Wohnen → mehr).</p>
     <ul class="mini-list">${parts}</ul>
     <p class="note"><b>Ablauf:</b> Der variable Teil wird im nächsten Verkaufsfenster ohne Gebühr mit Bitcoin abgelöst – meist zu einem höheren Kurs als beim Kauf. Der feste Teil läuft mit der Rate weiter (bis ${Math.floor(fixEnd)} zum festen Zins, danach mit angenommenem Anschlusszins + ${nf(S.followAdd, 1)} %-Pkt.) und wird im ersten Verkaufsfenster abgelöst, in dem das ohne Gebühr geht. Nach dem Rentenstart kommt die Rate aus dem Sicherheitstank.</p>
     ${evs ? `<ul class="mini-list">${evs}</ul>` : ''}</details>`;
@@ -2291,7 +2313,7 @@ async function runMCInner() {
 // ===================== Strategie-Suche =====================
 const FINDER = { running: false, res: null, sig: null, queued: false, timer: null };
 const FINDER_FREE = ['scenario', 'purchaseYear', 'btcMaxSell', 'finMode', 'tankMode', 'retireYear', 'payoffYear', 'priceBasis', 'realView', 'expert', 'prevPlan', 'fromFinder', 'btcManual', 'theme', 'planBase', 'checkins', 'done', 'lombardRate', 'lombardLtv', 'lageOpen', '_v', 'example'];
-function finderSig() { const o = { ...S, _model: 5 }; FINDER_FREE.forEach(k => delete o[k]); return JSON.stringify(o); }
+function finderSig() { const o = { ...S, _model: 6 }; FINDER_FREE.forEach(k => delete o[k]); return JSON.stringify(o); }
 (function loadFinder() { try { const j = JSON.parse(localStorage.getItem(STORE + '-finder')); if (j && j.res) { FINDER.res = j.res; FINDER.sig = j.sig; } } catch (e) {} })();
 function saveFinder() { try { localStorage.setItem(STORE + '-finder', JSON.stringify({ sig: FINDER.sig, res: FINDER.res })); } catch (e) {} }
 // veraltet, wenn sich Angaben geändert haben oder der Bitcoin-Kurs seit der Suche um mehr als 5 % bewegt hat
