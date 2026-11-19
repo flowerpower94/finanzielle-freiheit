@@ -1348,7 +1348,7 @@ const LAGE_G = [
     f: [
       { k: 'netIncome', l: 'Haushaltsnetto', u: '€/Monat', s: 100, h: 'alle Nettoeinkommen zusammen, inkl. Kindergeld · bei privat Versicherten nach Abzug ihres Beitrags' },
       { k: 'partnerNet', l: 'davon Netto Partner/in', u: '€/Monat', s: 100, h: '0 = alleinverdienend' },
-      { k: 'partnerUntil', l: 'Partner/in arbeitet bis', u: 'Jahr', s: 1, show: () => S.partnerNet > 0, h: 'danach fällt ihr/sein Netto weg · arbeitet sie/er nach Ihrem Rentenstart weiter, sinkt die Entnahme' },
+      { k: 'partnerUntil', l: 'Partner/in hört auf zu arbeiten', u: 'Jahr', s: 1, show: () => S.partnerNet > 0, h: 'ein Jahr eintragen, z. B. 2040: ab Anfang dieses Jahres fällt ihr/sein Netto weg · 0 = hört zusammen mit Ihnen auf · arbeitet sie/er nach Ihrem Rentenstart weiter, sinkt die Entnahme' },
       { k: 'expenses', l: 'Ausgaben ohne Miete', u: '€/Monat', s: 100, h: 'alles, was Sie im Monat ausgeben, ohne Kaltmiete und ohne Sparen · Nebenkosten wie Heizung und Strom gehören dazu' },
     ] },
   { id: 'verm', t: 'Vermögen', ms: 'Einstandspreis',
@@ -1361,7 +1361,7 @@ const LAGE_G = [
   { id: 'wohnen', t: 'Wohnen', ms: 'Tilgung, Arbeit nach dem Kauf',
     f: [
       { k: 'buyHouse', t: 'seg', o: [[false, 'Zur Miete bleiben'], [true, 'Haus kaufen']] },
-      { k: 'rent', l: 'Kaltmiete heute', u: '€/Monat', s: 50, h: () => S.buyHouse ? 'fällt mit dem Hauskauf weg' : 'läuft auch in der Rente weiter (steigt mit der Inflation)' },
+      { k: 'rent', l: () => S.buyHouse ? 'Kaltmiete bis zum Hauskauf' : 'Kaltmiete', u: '€/Monat', s: 50, h: () => S.buyHouse ? 'Ihre heutige Miete – zahlen Sie bis zum Kauf, danach fällt sie weg' : 'läuft auch in der Rente weiter (steigt mit der Inflation)' },
       { k: 'housePrice', l: 'Hauspreis (heutige Preise)', u: '€', s: 10000, show: () => S.buyHouse, h: () => `steigt im Modell um ${nf(S.houseGrowth, 1)} % pro Jahr` },
       { k: 'tilgung', l: 'Anfängliche Tilgung', u: '% pro Jahr', s: 0.1, m: 1, show: () => S.buyHouse, h: 'Banken verlangen meist 1–2 %. Weniger Tilgung = mehr Kredit bei gleicher Rate, dafür länger Schulden' },
       { k: 'minWorkAfterBuy', l: 'Nach dem Kauf noch arbeiten', u: 'Jahre', s: 0.5, m: 1, show: () => S.buyHouse, h: 'Die Bank gibt den Kredit nur mit Arbeitseinkommen. 1 Jahr ist ein vorsichtiger, ehrlicher Puffer (Probezeit, Selbstauskunft)' },
@@ -1470,6 +1470,7 @@ const OPEN = new Set((() => { try { return JSON.parse(localStorage.getItem(STORE
 
 function fieldHtml(f) {
   if (f.show && !f.show()) return '';
+  if (typeof f.l === 'function') f = { ...f, l: f.l() };
   const v = S[f.k], fh = typeof f.h === 'function', hint = fh ? f.h() : f.h;
   if (f.t === 'sel') return `<label class="f"><span>${f.l}</span><select data-k="${f.k}" ${f.num ? 'data-num="1"' : ''}>${f.o.map(([val, lab]) => `<option value="${val}"${String(v) === String(val) ? ' selected' : ''}>${lab}</option>`).join('')}</select></label>`;
   if (f.t === 'seg') return `<div class="f segf"><div class="seg" role="group">${f.o.map(([val, lab]) => `<button type="button" data-seg="${f.k}" data-v="${val}" class="${v === val ? 'on' : ''}" aria-pressed="${v === val}">${lab}</button>`).join('')}</div></div>`;
